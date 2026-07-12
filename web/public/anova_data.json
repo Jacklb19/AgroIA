@@ -1,0 +1,52 @@
+{
+  "pruebas": [
+    {
+      "Prueba": "Precipitación vs Fase ENSO",
+      "Variable": "precipitacion_mm",
+      "Factor": "fase_enso",
+      "Grupos": "3",
+      "N total": "47819",
+      "Levene p": "0.0000",
+      "F": "42.853",
+      "p-valor": "0.000000",
+      "Sig.": "***",
+      "Conclusión": "SIGNIFICATIVA"
+    },
+    {
+      "Prueba": "Precio insumos vs Tipo",
+      "Variable": "precio_cop_unidad",
+      "Factor": "tipo_insumo",
+      "Grupos": "5",
+      "N total": "5472",
+      "Levene p": "0.0000",
+      "F": "2591.793",
+      "p-valor": "0.000000",
+      "Sig.": "***",
+      "Conclusión": "SIGNIFICATIVA"
+    },
+    {
+      "Prueba": "Precipitación vs Trimestre",
+      "Variable": "precipitacion_mm",
+      "Factor": "trimestre",
+      "Grupos": "4",
+      "N total": "47819",
+      "Levene p": "0.0000",
+      "F": "197.951",
+      "p-valor": "0.000000",
+      "Sig.": "***",
+      "Conclusión": "SIGNIFICATIVA"
+    },
+    {
+      "Prueba": "Precip. diaria NASA POWER por municipio",
+      "Variable": "precipitacion_mm",
+      "Factor": "municipio (NASA POWER)",
+      "Grupos": "3",
+      "N total": "1098",
+      "Levene p": "0.0000",
+      "F": "24.813",
+      "p-valor": "0.000000",
+      "Sig.": "***",
+      "Conclusión": "SIGNIFICATIVA"
+    }
+  ]
+}

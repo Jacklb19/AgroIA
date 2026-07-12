@@ -1,0 +1,1009 @@
+{
+  "_meta": {
+    "proyecto": "AgroIA Colombia",
+    "version": "1.0",
+    "descripcion": "Tema Power BI derivado del diseño web. Importar en Power BI Desktop: Vista → Temas → Examinar temas.",
+    "dashboards": [
+      "Dashboard 1 — Panorama Ejecutivo",
+      "Dashboard 2 — Producción y Rendimiento",
+      "Dashboard 3 — Clima y Alertas",
+      "Dashboard 4 — Calidad de Datos",
+      "Dashboard 5 — Modelos y Evidencia"
+    ]
+  },
+
+  "name": "AgroIA Colombia",
+
+  "dataColors": [
+    "#1a7a4a",
+    "#1e4d7b",
+    "#d97706",
+    "#dc2626",
+    "#22a35f",
+    "#2563a3",
+    "#f59e0b",
+    "#ef4444",
+    "#6ec99a",
+    "#4b5563"
+  ],
+
+  "good":    "#1a7a4a",
+  "neutral": "#d97706",
+  "bad":     "#dc2626",
+  "minimum": "#1a7a4a",
+  "center":  "#d97706",
+  "maximum": "#dc2626",
+  "null":    "#9ca3af",
+
+  "background": "#ffffff",
+  "foreground":  "#111827",
+  "tableAccent": "#1a7a4a",
+
+  "textClasses": {
+    "callout": {
+      "fontSize": 34,
+      "fontFace": "Segoe UI",
+      "color": "#111827"
+    },
+    "title": {
+      "fontSize": 15,
+      "fontFace": "Segoe UI Semibold",
+      "color": "#111827"
+    },
+    "header": {
+      "fontSize": 12,
+      "fontFace": "Segoe UI",
+      "color": "#4b5563"
+    },
+    "label": {
+      "fontSize": 11,
+      "fontFace": "Segoe UI",
+      "color": "#6b7280"
+    },
+    "legend": {
+      "fontSize": 11,
+      "fontFace": "Segoe UI",
+      "color": "#6b7280"
+    },
+    "smallLabel": {
+      "fontSize": 10,
+      "fontFace": "Segoe UI",
+      "color": "#9ca3af"
+    }
+  },
+
+  "visualStyles": {
+
+    "*": {
+      "*": {
+        "background": [
+          {
+            "fillColor": { "solid": { "color": "#ffffff" } },
+            "show": true,
+            "transparency": 0
+          }
+        ],
+        "border": [
+          {
+            "show": true,
+            "color": { "solid": { "color": "#e5e7eb" } },
+            "radius": 10
+          }
+        ],
+        "shadow": [{ "show": true }],
+        "title": [
+          {
+            "show": true,
+            "fontColor": { "solid": { "color": "#111827" } },
+            "background": { "solid": { "color": "#ffffff" } },
+            "fontSize": 14,
+            "fontFamily": "Segoe UI Semibold",
+            "bold": true,
+            "italic": false,
+            "underline": false,
+            "alignment": "left"
+          }
+        ]
+      }
+    },
+
+    "card": {
+      "*": {
+        "calloutValue": [
+          {
+            "fontSize": 34,
+            "fontFamily": "Segoe UI Semibold",
+            "bold": true,
+            "color": { "solid": { "color": "#111827" } }
+          }
+        ],
+        "categoryLabel": [
+          {
+            "show": true,
+            "color": { "solid": { "color": "#6b7280" } },
+            "fontSize": 13,
+            "fontFamily": "Segoe UI"
+          }
+        ],
+        "dataLabel": [
+          {
+            "color": { "solid": { "color": "#374151" } },
+            "fontSize": 11,
+            "fontFamily": "Segoe UI"
+          }
+        ]
+      }
+    },
+
+    "multiRowCard": {
+      "*": {
+        "card": [
+          {
+            "outline": "BottomOnly",
+            "outlineColor": { "solid": { "color": "#e5e7eb" } },
+            "outlineWeight": 1,
+            "cardPadding": 14
+          }
+        ],
+        "categoryLabel": [
+          {
+            "color": { "solid": { "color": "#6b7280" } },
+            "fontSize": 11
+          }
+        ],
+        "dataLabel": [
+          {
+            "color": { "solid": { "color": "#111827" } },
+            "fontSize": 22,
+            "fontFamily": "Segoe UI Semibold",
+            "bold": true
+          }
+        ]
+      }
+    },
+
+    "lineChart": {
+      "*": {
+        "lineStyles": [
+          {
+            "strokeWidth": 2,
+            "lineStyle": "solid",
+            "showMarker": true,
+            "markerShape": "circle",
+            "markerSize": 5,
+            "markerColor": { "solid": { "color": "#1a7a4a" } }
+          }
+        ],
+        "plotArea": [
+          {
+            "transparency": 100
+          }
+        ],
+        "categoryAxis": [
+          {
+            "labelColor": { "solid": { "color": "#6b7280" } },
+            "fontSize": 11,
+            "fontFamily": "Segoe UI",
+            "gridlineColor": { "solid": { "color": "#f3f4f6" } },
+            "gridlineStyle": "dashed",
+            "gridlineWidth": 1
+          }
+        ],
+        "valueAxis": [
+          {
+            "labelColor": { "solid": { "color": "#6b7280" } },
+            "fontSize": 11,
+            "fontFamily": "Segoe UI",
+            "gridlineColor": { "solid": { "color": "#f3f4f6" } },
+            "gridlineStyle": "dashed",
+            "gridlineWidth": 1
+          }
+        ],
+        "legend": [
+          {
+            "show": true,
+            "position": "Bottom",
+            "fontFamily": "Segoe UI",
+            "fontSize": 11,
+            "labelColor": { "solid": { "color": "#6b7280" } }
+          }
+        ]
+      }
+    },
+
+    "clusteredBarChart": {
+      "*": {
+        "dataPoint": [
+          { "defaultColor": { "solid": { "color": "#1a7a4a" } } }
+        ],
+        "categoryAxis": [
+          {
+            "labelColor": { "solid": { "color": "#6b7280" } },
+            "fontSize": 11,
+            "fontFamily": "Segoe UI"
+          }
+        ],
+        "valueAxis": [
+          {
+            "labelColor": { "solid": { "color": "#6b7280" } },
+            "fontSize": 11,
+            "fontFamily": "Segoe UI",
+            "gridlineColor": { "solid": { "color": "#f3f4f6" } }
+          }
+        ],
+        "dataLabel": [
+          {
+            "show": true,
+            "color": { "solid": { "color": "#374151" } },
+            "fontSize": 11,
+            "fontFamily": "Segoe UI"
+          }
+        ],
+        "legend": [
+          {
+            "show": true,
+            "position": "Bottom",
+            "fontSize": 11
+          }
+        ]
+      }
+    },
+
+    "clusteredColumnChart": {
+      "*": {
+        "dataPoint": [
+          { "defaultColor": { "solid": { "color": "#1a7a4a" } } }
+        ],
+        "categoryAxis": [
+          {
+            "labelColor": { "solid": { "color": "#6b7280" } },
+            "fontSize": 11,
+            "fontFamily": "Segoe UI"
+          }
+        ],
+        "valueAxis": [
+          {
+            "labelColor": { "solid": { "color": "#6b7280" } },
+            "fontSize": 11,
+            "gridlineColor": { "solid": { "color": "#f3f4f6" } }
+          }
+        ],
+        "dataLabel": [
+          {
+            "show": true,
+            "color": { "solid": { "color": "#374151" } },
+            "fontSize": 11
+          }
+        ]
+      }
+    },
+
+    "donutChart": {
+      "*": {
+        "legend": [
+          {
+            "show": true,
+            "position": "Right",
+            "fontSize": 11,
+            "fontFamily": "Segoe UI",
+            "labelColor": { "solid": { "color": "#6b7280" } }
+          }
+        ],
+        "dataLabel": [
+          {
+            "show": true,
+            "fontSize": 11,
+            "fontFamily": "Segoe UI",
+            "color": { "solid": { "color": "#374151" } },
+            "labelDisplayUnits": 0
+          }
+        ],
+        "innerRadius": [{ "value": 50 }]
+      }
+    },
+
+    "pieChart": {
+      "*": {
+        "legend": [
+          {
+            "show": true,
+            "position": "Bottom",
+            "fontSize": 11,
+            "labelColor": { "solid": { "color": "#6b7280" } }
+          }
+        ],
+        "dataLabel": [
+          {
+            "show": true,
+            "fontSize": 11,
+            "color": { "solid": { "color": "#374151" } }
+          }
+        ]
+      }
+    },
+
+    "scatterChart": {
+      "*": {
+        "dataPoint": [
+          { "defaultColor": { "solid": { "color": "#1a7a4a" } } }
+        ],
+        "categoryAxis": [
+          {
+            "labelColor": { "solid": { "color": "#6b7280" } },
+            "fontSize": 11,
+            "gridlineColor": { "solid": { "color": "#f3f4f6" } }
+          }
+        ],
+        "valueAxis": [
+          {
+            "labelColor": { "solid": { "color": "#6b7280" } },
+            "fontSize": 11,
+            "gridlineColor": { "solid": { "color": "#f3f4f6" } }
+          }
+        ]
+      }
+    },
+
+    "map": {
+      "*": {
+        "colors": [
+          {
+            "minColor": { "solid": { "color": "#d6ecdf" } },
+            "midColor": { "solid": { "color": "#d97706" } },
+            "maxColor": { "solid": { "color": "#dc2626" } }
+          }
+        ]
+      }
+    },
+
+    "filledMap": {
+      "*": {
+        "dataColors": [
+          {
+            "minColor": { "solid": { "color": "#d6ecdf" } },
+            "midColor": { "solid": { "color": "#fde6c4" } },
+            "maxColor": { "solid": { "color": "#fbd5d5" } }
+          }
+        ]
+      }
+    },
+
+    "tableEx": {
+      "*": {
+        "header": [
+          {
+            "fontColor": { "solid": { "color": "#4b5563" } },
+            "backColor": { "solid": { "color": "#f9fafb" } },
+            "fontSize": 11,
+            "fontFamily": "Segoe UI Semibold",
+            "bold": true,
+            "outline": "Frame",
+            "outlineColor": { "solid": { "color": "#e5e7eb" } },
+            "outlineWeight": 1
+          }
+        ],
+        "rows": [
+          {
+            "fontColor": { "solid": { "color": "#374151" } },
+            "fontSize": 12,
+            "fontFamily": "Segoe UI",
+            "backColor": { "solid": { "color": "#ffffff" } },
+            "altBackColor": { "solid": { "color": "#f9fafb" } },
+            "outline": "LeftRight",
+            "outlineColor": { "solid": { "color": "#e5e7eb" } }
+          }
+        ],
+        "values": [
+          {
+            "fontColor": { "solid": { "color": "#374151" } },
+            "fontSize": 12,
+            "fontFamily": "Segoe UI"
+          }
+        ],
+        "total": [
+          {
+            "fontColor": { "solid": { "color": "#111827" } },
+            "backColor": { "solid": { "color": "#f3f4f6" } },
+            "fontSize": 12,
+            "fontFamily": "Segoe UI Semibold",
+            "bold": true
+          }
+        ],
+        "grid": [
+          {
+            "gridVertical": false,
+            "gridHorizontal": true,
+            "outlineColor": { "solid": { "color": "#e5e7eb" } },
+            "gridHorizontalColor": { "solid": { "color": "#e5e7eb" } },
+            "rowPadding": 10
+          }
+        ]
+      }
+    },
+
+    "matrix": {
+      "*": {
+        "header": [
+          {
+            "fontColor": { "solid": { "color": "#4b5563" } },
+            "backColor": { "solid": { "color": "#f9fafb" } },
+            "fontSize": 11,
+            "fontFamily": "Segoe UI Semibold",
+            "bold": true
+          }
+        ],
+        "rows": [
+          {
+            "fontColor": { "solid": { "color": "#374151" } },
+            "fontSize": 12,
+            "fontFamily": "Segoe UI",
+            "backColor": { "solid": { "color": "#ffffff" } }
+          }
+        ],
+        "values": [
+          {
+            "fontColor": { "solid": { "color": "#374151" } },
+            "fontSize": 12,
+            "fontFamily": "Segoe UI"
+          }
+        ]
+      }
+    },
+
+    "slicer": {
+      "*": {
+        "selection": [
+          {
+            "selectAllCheckboxEnabled": true,
+            "singleSelect": false
+          }
+        ],
+        "header": [
+          {
+            "show": true,
+            "fontColor": { "solid": { "color": "#6b7280" } },
+            "background": { "solid": { "color": "#ffffff" } },
+            "fontSize": 11,
+            "fontFamily": "Segoe UI",
+            "bold": false
+          }
+        ],
+        "items": [
+          {
+            "fontColor": { "solid": { "color": "#374151" } },
+            "background": { "solid": { "color": "#ffffff" } },
+            "fontSize": 12,
+            "fontFamily": "Segoe UI",
+            "outline": "None",
+            "textAlignment": "Left"
+          }
+        ],
+        "data": [
+          {
+            "mode": "Dropdown"
+          }
+        ]
+      }
+    },
+
+    "gauge": {
+      "*": {
+        "dataLabel": [
+          {
+            "color": { "solid": { "color": "#111827" } },
+            "fontSize": 20,
+            "fontFamily": "Segoe UI Semibold",
+            "bold": true
+          }
+        ]
+      }
+    },
+
+    "textbox": {
+      "*": {
+        "background": [
+          {
+            "fillColor": { "solid": { "color": "#ffffff" } },
+            "show": false
+          }
+        ]
+      }
+    }
+  },
+
+  "page": {
+    "background": {
+      "fillColor": { "solid": { "color": "#f9fafb" } },
+      "transparency": 0
+    },
+    "outspace": {
+      "fillColor": { "solid": { "color": "#f3f4f6" } },
+      "transparency": 0
+    }
+  },
+
+  "_colorSemantics": {
+    "riesgo_alto":    "#dc2626",
+    "riesgo_medio":   "#d97706",
+    "riesgo_bajo":    "#1a7a4a",
+    "rendimiento":    "#1a7a4a",
+    "clima_lluvia":   "#1e4d7b",
+    "clima_temp":     "#d97706",
+    "alertas":        "#dc2626",
+    "datos_secundarios": "#2563a3",
+    "neutral_text":   "#6b7280",
+    "borde":          "#e5e7eb",
+    "fondo_card":     "#ffffff",
+    "fondo_pagina":   "#f9fafb"
+  },
+
+  "_dashboards": {
+
+    "D1_Panorama_Ejecutivo": {
+      "fuentes": [
+        "dim_municipio",
+        "dim_cultivo",
+        "dim_tiempo",
+        "pred_rendimiento",
+        "pred_alerta_climatica",
+        "fact_produccion_agricola"
+      ],
+      "filtros_globales": ["Año", "Departamento", "Municipio", "Cultivo"],
+      "color_acento": "#1a7a4a",
+      "visuales": [
+        {
+          "id": "kpi_municipios",
+          "tipo": "Tarjeta (Card)",
+          "titulo": "Municipios Cubiertos",
+          "campo": "COUNT(dim_municipio[id_municipio])",
+          "valor_referencia": 1122,
+          "color_acento": "#1a7a4a",
+          "icono_sugerido": "Mapa / Pin",
+          "posicion": { "fila": 1, "columna": 1 }
+        },
+        {
+          "id": "kpi_cultivos",
+          "tipo": "Tarjeta (Card)",
+          "titulo": "Cultivos Modelados",
+          "campo": "COUNT(dim_cultivo[id_cultivo])",
+          "valor_referencia": 87,
+          "color_acento": "#d97706",
+          "icono_sugerido": "Planta / Semilla",
+          "posicion": { "fila": 1, "columna": 2 }
+        },
+        {
+          "id": "kpi_predicciones",
+          "tipo": "Tarjeta (Card)",
+          "titulo": "Predicciones Generadas",
+          "campo": "COUNT(pred_rendimiento[id_pred])",
+          "valor_referencia": 42800,
+          "color_acento": "#1e4d7b",
+          "icono_sugerido": "CPU / Chip",
+          "posicion": { "fila": 1, "columna": 3 }
+        },
+        {
+          "id": "kpi_alertas",
+          "tipo": "Tarjeta (Card)",
+          "titulo": "Alertas Activas",
+          "campo": "COUNT(pred_alerta_climatica[id_alerta])",
+          "valor_referencia": 214,
+          "color_acento": "#dc2626",
+          "icono_sugerido": "Campana / Alerta",
+          "posicion": { "fila": 1, "columna": 4 }
+        },
+        {
+          "id": "mapa_municipios",
+          "tipo": "Mapa Coroplético (Filled Map)",
+          "titulo": "Riesgo Agroclimático por Municipio",
+          "campo_ubicacion": "dim_municipio[nombre_municipio]",
+          "campo_color": "pred_alerta_climatica[nivel_riesgo]",
+          "escala_color": {
+            "bajo":  "#1a7a4a",
+            "medio": "#d97706",
+            "alto":  "#dc2626"
+          },
+          "posicion": { "fila": 2, "columna": "1-2" }
+        },
+        {
+          "id": "linea_real_vs_predicho",
+          "tipo": "Gráfico de Líneas (Line Chart)",
+          "titulo": "Rendimiento Real vs Predicho · t/ha",
+          "serie_1": { "nombre": "Real", "campo": "fact_produccion_agricola[rendimiento_tha]", "color": "#111827" },
+          "serie_2": { "nombre": "Predicho", "campo": "pred_rendimiento[rendimiento_predicho]", "color": "#1a7a4a" },
+          "eje_x": "dim_tiempo[año]",
+          "anotacion": "Proyección 5.05 t/ha hacia 2027 · MAE = 0.18",
+          "posicion": { "fila": 2, "columna": "3-4" }
+        },
+        {
+          "id": "dona_alertas",
+          "tipo": "Gráfico de Dona (Donut Chart)",
+          "titulo": "Distribución de Alertas por Tipo",
+          "campo_categoria": "pred_alerta_climatica[tipo_alerta]",
+          "campo_valor": "COUNT(pred_alerta_climatica[id_alerta])",
+          "colores_segmentos": {
+            "Sequía":          "#d97706",
+            "Exceso de lluvia": "#1e4d7b",
+            "Plagas":          "#dc2626",
+            "Mercado":         "#1a7a4a"
+          },
+          "posicion": { "fila": 3, "columna": "1-2" }
+        },
+        {
+          "id": "barras_top_municipios",
+          "tipo": "Gráfico de Barras Horizontales (Clustered Bar)",
+          "titulo": "Top Municipios — Rendimiento t/ha",
+          "campo_y": "dim_municipio[nombre_municipio]",
+          "campo_x": "AVG(fact_produccion_agricola[rendimiento_tha])",
+          "color_barra": "#1a7a4a",
+          "top_n": 10,
+          "posicion": { "fila": 3, "columna": "3-4" }
+        }
+      ]
+    },
+
+    "D2_Produccion_Rendimiento": {
+      "fuentes": [
+        "fact_produccion_agricola",
+        "pred_rendimiento",
+        "dim_municipio",
+        "dim_cultivo",
+        "dim_tiempo"
+      ],
+      "filtros": ["Año/Semestre", "Cultivo", "Departamento", "Municipio"],
+      "color_acento": "#1a7a4a",
+      "visuales": [
+        {
+          "id": "linea_rendimiento_historico",
+          "tipo": "Gráfico de Líneas",
+          "titulo": "Rendimiento Histórico por Año · t/ha",
+          "campo_x": "dim_tiempo[año]",
+          "campo_y": "AVG(fact_produccion_agricola[rendimiento_tha])",
+          "color": "#1a7a4a"
+        },
+        {
+          "id": "columnas_produccion_area",
+          "tipo": "Gráfico de Columnas Agrupadas",
+          "titulo": "Producción Total y Área Sembrada",
+          "campo_x": "dim_tiempo[año]",
+          "serie_produccion": "SUM(fact_produccion_agricola[produccion_ton])",
+          "serie_area": "SUM(fact_produccion_agricola[area_ha])",
+          "colores": ["#1a7a4a", "#d6ecdf"]
+        },
+        {
+          "id": "linea_real_vs_predicho_d2",
+          "tipo": "Gráfico de Líneas — Dual",
+          "titulo": "Real vs Predicho por Cultivo",
+          "serie_real":    { "campo": "fact_produccion_agricola[rendimiento_tha]", "color": "#111827" },
+          "serie_predicho": { "campo": "pred_rendimiento[rendimiento_predicho]",   "color": "#1a7a4a" }
+        },
+        {
+          "id": "barras_top_municipios_d2",
+          "tipo": "Gráfico de Barras Horizontales",
+          "titulo": "Top Municipios por Rendimiento",
+          "top_n": 10,
+          "color": "#1a7a4a"
+        },
+        {
+          "id": "barras_top_cultivos",
+          "tipo": "Gráfico de Barras Horizontales",
+          "titulo": "Top Cultivos por Rendimiento Promedio",
+          "top_n": 10,
+          "color": "#22a35f"
+        },
+        {
+          "id": "scatter_area_rendimiento",
+          "tipo": "Gráfico de Dispersión (Scatter)",
+          "titulo": "Área Sembrada vs Rendimiento",
+          "eje_x": "fact_produccion_agricola[area_ha]",
+          "eje_y": "fact_produccion_agricola[rendimiento_tha]",
+          "color": "#1e4d7b"
+        },
+        {
+          "id": "scatter_precipitacion_rendimiento",
+          "tipo": "Gráfico de Dispersión (Scatter)",
+          "titulo": "Precipitación vs Rendimiento",
+          "eje_x": "fact_clima_mensual[precipitacion_mm]",
+          "eje_y": "fact_produccion_agricola[rendimiento_tha]",
+          "color": "#1e4d7b"
+        },
+        {
+          "id": "mapa_por_cultivo",
+          "tipo": "Mapa Coroplético",
+          "titulo": "Rendimiento por Municipio — Cultivo Seleccionado",
+          "campo_color": "AVG(fact_produccion_agricola[rendimiento_tha])"
+        }
+      ]
+    },
+
+    "D3_Clima_Alertas": {
+      "fuentes": [
+        "fact_clima_mensual",
+        "fact_alerta_enso",
+        "pred_alerta_climatica",
+        "dim_municipio",
+        "dim_tiempo"
+      ],
+      "filtros": ["Ventana 12 meses", "Municipio", "Nivel de riesgo"],
+      "color_acento": "#1e4d7b",
+      "visuales": [
+        {
+          "id": "linea_precipitacion",
+          "tipo": "Gráfico de Líneas",
+          "titulo": "Precipitación Mensual · mm",
+          "campo_x": "dim_tiempo[mes_año]",
+          "campo_y": "SUM(fact_clima_mensual[precipitacion_mm])",
+          "color": "#1e4d7b"
+        },
+        {
+          "id": "linea_temperatura",
+          "tipo": "Gráfico de Líneas",
+          "titulo": "Temperatura Máxima / Media · °C",
+          "campo_x": "dim_tiempo[mes_año]",
+          "serie_max":  { "campo": "AVG(fact_clima_mensual[temp_max_c])",  "color": "#d97706" },
+          "serie_media": { "campo": "AVG(fact_clima_mensual[temp_media_c])", "color": "#f59e0b" }
+        },
+        {
+          "id": "tabla_enso",
+          "tipo": "Tabla / Matriz",
+          "titulo": "Estado ENSO por Período",
+          "campos": [
+            "fact_alerta_enso[año]",
+            "fact_alerta_enso[trimestre]",
+            "fact_alerta_enso[fase_enso]",
+            "fact_alerta_enso[indice_oni]"
+          ],
+          "formato_condicional": {
+            "Niño":    "#d97706",
+            "Niña":    "#1e4d7b",
+            "Neutro":  "#1a7a4a"
+          }
+        },
+        {
+          "id": "heatmap_alertas",
+          "tipo": "Matriz con formato condicional (Heatmap)",
+          "titulo": "Heatmap de Alertas por Mes y Año",
+          "fila": "dim_tiempo[año]",
+          "columna": "dim_tiempo[mes_nombre]",
+          "valor": "COUNT(pred_alerta_climatica[id_alerta])",
+          "escala_color": {
+            "minimo": "#d6ecdf",
+            "maximo": "#dc2626"
+          }
+        },
+        {
+          "id": "mapa_riesgo_municipal",
+          "tipo": "Mapa Coroplético",
+          "titulo": "Riesgo Climático por Municipio",
+          "campo_color": "pred_alerta_climatica[nivel_riesgo]",
+          "escala": { "BAJO": "#1a7a4a", "MEDIO": "#d97706", "ALTO": "#dc2626" }
+        },
+        {
+          "id": "barras_severidad",
+          "tipo": "Gráfico de Barras Apiladas",
+          "titulo": "Distribución de Alertas por Severidad",
+          "campo_categoria": "pred_alerta_climatica[nivel_riesgo]",
+          "campo_valor": "COUNT(pred_alerta_climatica[id_alerta])",
+          "colores": { "BAJO": "#1a7a4a", "MEDIO": "#d97706", "ALTO": "#dc2626" }
+        }
+      ]
+    },
+
+    "D4_Calidad_Datos": {
+      "fuentes": [
+        "dim_municipio",
+        "dim_estacion_ideam",
+        "fact_clima_mensual",
+        "fact_produccion_agricola",
+        "fact_alerta_enso",
+        "model_version"
+      ],
+      "filtros": ["Severidad (alta/media)", "Últimas 72h"],
+      "color_acento": "#d97706",
+      "visuales": [
+        {
+          "id": "kpi_cobertura_climatica",
+          "tipo": "Tarjeta o Medidor (Gauge)",
+          "titulo": "Cobertura Climática Municipal",
+          "campo": "DIVIDE(COUNTROWS(fact_clima_mensual), COUNTROWS(dim_municipio))",
+          "unidad": "%",
+          "umbral_verde": 85,
+          "umbral_amarillo": 70
+        },
+        {
+          "id": "kpi_registros_faltantes",
+          "tipo": "Tarjeta",
+          "titulo": "Registros Climáticos Faltantes",
+          "campo": "CALCULATE(COUNTROWS(fact_clima_mensual), ISBLANK(fact_clima_mensual[precipitacion_mm]))",
+          "color_acento": "#d97706"
+        },
+        {
+          "id": "kpi_rendimiento_nulo",
+          "tipo": "Tarjeta",
+          "titulo": "Municipios con Rendimiento Nulo",
+          "campo": "CALCULATE(COUNTROWS(fact_produccion_agricola), fact_produccion_agricola[rendimiento_tha] = 0)",
+          "color_acento": "#dc2626"
+        },
+        {
+          "id": "kpi_estaciones_sin_municipio",
+          "tipo": "Tarjeta",
+          "titulo": "Estaciones sin Municipio Asignado",
+          "campo": "CALCULATE(COUNTROWS(dim_estacion_ideam), ISBLANK(dim_estacion_ideam[id_municipio]))",
+          "color_acento": "#d97706"
+        },
+        {
+          "id": "kpi_enso_faltantes",
+          "tipo": "Tarjeta",
+          "titulo": "Trimestres ENSO Faltantes",
+          "campo": "medida personalizada sobre fact_alerta_enso",
+          "color_acento": "#d97706"
+        },
+        {
+          "id": "kpi_ultima_corrida",
+          "tipo": "Tarjeta",
+          "titulo": "Última Corrida del Modelo",
+          "campo": "MAX(model_version[fecha_entrenamiento])",
+          "formato": "dd/MM/yyyy HH:mm",
+          "color_acento": "#1a7a4a"
+        },
+        {
+          "id": "tabla_estaciones",
+          "tipo": "Tabla",
+          "titulo": "Detalle Estaciones IDEAM",
+          "campos": [
+            "dim_estacion_ideam[codigo_estacion]",
+            "dim_estacion_ideam[nombre_estacion]",
+            "dim_estacion_ideam[departamento]",
+            "dim_estacion_ideam[id_municipio]",
+            "dim_estacion_ideam[activa]"
+          ]
+        },
+        {
+          "id": "barras_cobertura_depto",
+          "tipo": "Gráfico de Barras Horizontales",
+          "titulo": "Cobertura de Datos por Departamento",
+          "campo_y": "dim_municipio[departamento]",
+          "campo_x": "medida de cobertura %",
+          "color": "#1e4d7b"
+        }
+      ]
+    },
+
+    "D5_Modelos_Evidencia": {
+      "fuentes": [
+        "model_version",
+        "pred_rendimiento",
+        "pred_alerta_climatica",
+        "dim_cultivo",
+        "dim_tiempo"
+      ],
+      "filtros": ["Modelo activo", "Ventana de evaluación 2024-2025"],
+      "color_acento": "#1e4d7b",
+      "visuales": [
+        {
+          "id": "kpi_r2",
+          "tipo": "Tarjeta",
+          "titulo": "R² del Modelo Campeón",
+          "campo": "MAX(model_version[r2_score])",
+          "valor_referencia": 0.81,
+          "color_acento": "#1a7a4a"
+        },
+        {
+          "id": "kpi_mae",
+          "tipo": "Tarjeta",
+          "titulo": "MAE — Error Absoluto Medio",
+          "campo": "MIN(model_version[mae])",
+          "valor_referencia": 0.18,
+          "color_acento": "#1a7a4a"
+        },
+        {
+          "id": "kpi_rmse",
+          "tipo": "Tarjeta",
+          "titulo": "RMSE",
+          "campo": "MIN(model_version[rmse])",
+          "color_acento": "#1a7a4a"
+        },
+        {
+          "id": "tabla_comparacion_baselines",
+          "tipo": "Tabla con formato condicional",
+          "titulo": "Comparación de Modelos vs Baselines",
+          "columnas": [
+            { "nombre": "Modelo",  "campo": "model_version[nombre_modelo]" },
+            { "nombre": "R²",      "campo": "model_version[r2_score]",  "formato_condicional": { "mejor": "verde", "peor": "rojo" } },
+            { "nombre": "MAE",     "campo": "model_version[mae]",       "formato_condicional": { "mejor": "verde", "peor": "rojo" } },
+            { "nombre": "RMSE",    "campo": "model_version[rmse]",      "formato_condicional": { "mejor": "verde", "peor": "rojo" } }
+          ],
+          "filas_referencia": [
+            "Media Global",
+            "Media por Cultivo",
+            "Lag Histórico",
+            "Blend Campeón (XGBoost)"
+          ]
+        },
+        {
+          "id": "barras_importancia_variables",
+          "tipo": "Gráfico de Barras Horizontales",
+          "titulo": "Importancia de Variables — XGBoost",
+          "campo_y": "nombre de variable",
+          "campo_x": "importancia normalizada",
+          "color": "#1e4d7b",
+          "notas": "Exportar feature_importances_ de XGBoost al star schema"
+        },
+        {
+          "id": "tabla_metricas_alerta",
+          "tipo": "Matriz",
+          "titulo": "Métricas del Modelo de Alerta por Clase",
+          "filas": "clase (BAJO / MEDIO / ALTO)",
+          "columnas": ["Precisión", "Recall", "F1-Score", "Soporte"],
+          "formato_condicional": { "escala": "verde-amarillo-rojo" }
+        },
+        {
+          "id": "tabla_versiones_modelo",
+          "tipo": "Tabla",
+          "titulo": "Versiones Activas del Modelo",
+          "campos": [
+            "model_version[id_version]",
+            "model_version[nombre_modelo]",
+            "model_version[fecha_entrenamiento]",
+            "model_version[r2_score]",
+            "model_version[mae]",
+            "model_version[rmse]",
+            "model_version[activo]"
+          ]
+        }
+      ]
+    }
+  },
+
+  "_layoutGrid": {
+    "descripcion": "Grilla base de 12 columnas por página Power BI. Fondo: #f9fafb. Margen: 16px.",
+    "resolucion_sugerida": "1280 × 720 px (16:9)",
+    "fondo_pagina": "#f9fafb",
+    "margen": 16,
+    "gap_cards": 14,
+    "altura_kpi_row": 120,
+    "altura_chart_primary": 320,
+    "altura_chart_secondary": 240,
+    "altura_tabla": 280,
+    "borde_card": { "color": "#e5e7eb", "radius": 10, "grosor": 1 },
+    "sombra_card": "0 2px 6px rgba(15,23,42,0.06)",
+    "header_seccion": {
+      "fuente": "Segoe UI Semibold",
+      "tamanio": 20,
+      "color": "#111827",
+      "separador": { "color": "#1a7a4a", "grosor": 3, "ancho": 32 }
+    },
+    "subtitulo_card": {
+      "fuente": "Segoe UI",
+      "tamanio": 12,
+      "color": "#6b7280"
+    },
+    "badge_fuente": {
+      "descripcion": "Texto pequeño en esquina derecha del card indicando la tabla fuente",
+      "fuente": "Segoe UI",
+      "tamanio": 10,
+      "color": "#6b7280",
+      "fondo": "#f3f4f6",
+      "borde": "#e5e7eb",
+      "padding": "3px 8px",
+      "radius": 999
+    }
+  },
+
+  "_filtrosBarra": {
+    "posicion": "Panel lateral izquierdo o franja superior",
+    "componentes": [
+      { "campo": "dim_tiempo[año]",             "tipo": "Slicer — Lista o Desplegable" },
+      { "campo": "dim_tiempo[semestre]",         "tipo": "Slicer — Botones A/B" },
+      { "campo": "dim_municipio[departamento]",  "tipo": "Slicer — Buscador" },
+      { "campo": "dim_municipio[municipio]",     "tipo": "Slicer — Buscador" },
+      { "campo": "dim_cultivo[nombre_cultivo]",  "tipo": "Slicer — Desplegable" }
+    ],
+    "estilo_slicer": {
+      "fondo": "#ffffff",
+      "borde": "#e5e7eb",
+      "radius": 8,
+      "fuente_header": { "color": "#6b7280", "tamanio": 11 },
+      "fuente_item":   { "color": "#374151", "tamanio": 12 }
+    }
+  }
+}

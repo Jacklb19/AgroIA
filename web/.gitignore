@@ -1,0 +1,12 @@
+# secrets — never subir al repo
+.env.local
+.env*.local
+
+# dependencias y build
+node_modules/
+.next/
+out/
+
+# OS
+.DS_Store
+Thumbs.db
