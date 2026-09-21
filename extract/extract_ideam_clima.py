@@ -93,10 +93,14 @@ def _download_month_fast(
     for start_str, end_str in chunks:
         where = f"fechaobservacion >= '{start_str}' AND fechaobservacion < '{end_str}'"
 
+        # Para promedios se piden también el máximo y el mínimo de las lecturas: son la temperatura
+        # máxima y mínima REALES del mes (antes máx = mín = media, porque solo se calculaba el promedio).
+        extremos = "max(valorobservado) as valor_max, min(valorobservado) as valor_min, " if agg_func.lower() == "avg" else ""
         if include_sensor:
             select = (
                 f"codigoestacion, descripcionsensor, "
                 f"{agg_func}(valorobservado) as valor_agregado, "
+                f"{extremos}"
                 f"count(*) as num_lecturas"
             )
             group = "codigoestacion, descripcionsensor"
@@ -161,6 +165,9 @@ def _download_month_fast(
     df_chunks = pd.DataFrame(all_rows)
 
     df_chunks["valor_agregado"] = pd.to_numeric(df_chunks["valor_agregado"], errors="coerce")
+    for extremo in ("valor_max", "valor_min"):
+        if extremo in df_chunks.columns:
+            df_chunks[extremo] = pd.to_numeric(df_chunks[extremo], errors="coerce")
     df_chunks["num_lecturas"] = pd.to_numeric(df_chunks["num_lecturas"], errors="coerce").fillna(0)
 
     group_cols = ["codigoestacion", "descripcionsensor"] if include_sensor else ["codigoestacion"]
@@ -177,10 +184,11 @@ def _download_month_fast(
     elif agg_func.lower() == "avg":
         # Promedio ponderado real entre bloques
         df_chunks["suma_parcial"] = df_chunks["valor_agregado"] * df_chunks["num_lecturas"]
-        df = df_chunks.groupby(group_cols, as_index=False).agg(
-            suma_parcial=("suma_parcial", "sum"),
-            num_lecturas=("num_lecturas", "sum"),
-        )
+        agregados = {"suma_parcial": ("suma_parcial", "sum"), "num_lecturas": ("num_lecturas", "sum")}
+        if "valor_max" in df_chunks.columns:
+            agregados["max_valor"] = ("valor_max", "max")
+            agregados["min_valor"] = ("valor_min", "min")
+        df = df_chunks.groupby(group_cols, as_index=False).agg(**agregados)
         df["promedio_valor"] = df["suma_parcial"] / df["num_lecturas"]
 
         # Reportar NaN en lugar de enmascarar divisiones por cero
@@ -313,7 +321,7 @@ def extract_clima_combinado_mensual() -> pd.DataFrame:
         agg_func="avg",
         include_sensor=True,
         out_dir=out_dir,
-        cache_prefix="clima_v4",
+        cache_prefix="clima_v5",
         out_file=out_dir / "clima_combined_mensual_total.parquet",
         variable_name="Clima combinado IDEAM",
     )

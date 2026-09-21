@@ -1,28 +1,34 @@
 """
-anova_tests.py — Pruebas ANOVA sobre datos reales de AgroIA Colombia
-=====================================================================
-Ejecuta 3 pruebas ANOVA con datos reales del pipeline:
+anova_tests.py — Comparaciones entre grupos sobre datos reales de AgroIA Colombia
+=================================================================================
+Tres pruebas con datos del pipeline:
 
   1. Precipitación mensual  vs  Fase ENSO  (El Niño / La Niña / Neutro)
-  2. Precio de insumos      vs  Tipo       (fertilizante / agroquimico / semilla / …)
-  3. Precipitación mensual  vs  Trimestre  (Q1 ene-mar / Q2 abr-jun / Q3 jul-sep / Q4 oct-dic)
+  2. Precipitación mensual  vs  Trimestre  (estacionalidad)
+  3. Precipitación diaria NASA POWER  vs  Municipio  (fuente externa)
 
-Cada prueba sigue el protocolo estadístico completo:
-  Step 1 — Levene  (homogeneidad de varianzas)
-  Step 2 — ANOVA   (scipy.stats.f_oneway)
-  Step 3 — Tukey HSD post-hoc si p < 0.05
+Diseño estadístico (ver validate/anova_robusto.py):
+  - Unidades independientes: se promedia a UN valor por mes calendario (o por municipio-mes) antes
+    de comparar. Comparar miles de lecturas estación-mes como independientes infla la significancia.
+  - ANOVA de Welch (no exige varianzas iguales) + Kruskal-Wallis (no exige normalidad).
+  - Tamaño de efecto (eta²): cuánto de la variación explica el factor.
+  - Post-hoc: Mann-Whitney por pares con corrección de Holm.
+
+(La prueba de "precio de insumos por tipo" se eliminó: comparaba precios en unidades distintas —COP/ton,
+jornal, litro— y no tiene interpretación.)
 
 Genera boxplots en data/quality_reports/anova_*.png y una tabla resumen.
 
 Uso:
     python -m validate.anova_tests
     python -m validate.anova_tests --verbose
+    python -m validate.anova_tests --export-web     # copia resumen e imágenes a web/public
 """
 import argparse
 import io
 import sys
 import warnings
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 # Forzar UTF-8 en stdout para Windows
@@ -32,16 +38,16 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
 import numpy as np
 import pandas as pd
-import scipy.stats as stats
-from statsmodels.stats.multicomp import pairwise_tukeyhsd
 
 warnings.filterwarnings("ignore")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from config.settings import DATA_RAW, DATA_PROCESSED
+from validate.anova_robusto import (
+    agregar_unidades_independientes, comparar_grupos, etiqueta_efecto, posthoc_holm,
+)
 
 REPORT_DIR = Path(__file__).resolve().parent.parent / "data" / "quality_reports"
 REPORT_DIR.mkdir(parents=True, exist_ok=True)
@@ -81,11 +87,19 @@ class AnovaResult:
     f_stat: float
     p_valor: float
     significativa: bool
-    tukey_df: pd.DataFrame | None = None
+    tukey_df: pd.DataFrame | None = None       # post-hoc (Mann-Whitney + Holm)
     nota: str = ""
+    kruskal_p: float = float("nan")
+    eta2: float = float("nan")
+
+    def __post_init__(self):
+        # toma los valores de la última comparación ejecutada (ver _run_anova)
+        self.kruskal_p = _ULTIMA.get("kruskal_p", float("nan"))
+        self.eta2 = _ULTIMA.get("eta2", float("nan"))
 
 
 results: list[AnovaResult] = []
+_ULTIMA: dict = {}
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -103,21 +117,16 @@ def _sig_label(p: float) -> str:
 
 
 def _run_anova(grupos_data: dict[str, np.ndarray]) -> tuple[float, float, float]:
-    arrays = list(grupos_data.values())
-    lev_stat, lev_p = stats.levene(*arrays)
-    f, p = stats.f_oneway(*arrays)
-    return lev_p, f, p
+    """ANOVA de Welch. Retorna (levene_p, F de Welch, p de Welch); Kruskal-Wallis y eta² quedan en _ULTIMA."""
+    r = comparar_grupos(grupos_data)
+    _ULTIMA.clear()
+    _ULTIMA.update(r)
+    return r["levene_p"], r["welch_f"], r["welch_p"]
 
 
 def _tukey(series_list: list[np.ndarray], labels: list[str]) -> pd.DataFrame:
-    all_vals = np.concatenate(series_list)
-    all_labs = np.concatenate([np.full(len(s), l) for s, l in zip(series_list, labels)])
-    result = pairwise_tukeyhsd(all_vals, all_labs, alpha=0.05)
-    df = pd.DataFrame(
-        data=result._results_table.data[1:],
-        columns=result._results_table.data[0],
-    )
-    return df
+    """Post-hoc por pares (Mann-Whitney con Holm). Se conserva el nombre por compatibilidad."""
+    return posthoc_holm(dict(zip(labels, series_list)))
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -250,7 +259,6 @@ def _boxplot(grupos_data: dict[str, np.ndarray], title: str,
 
     # Título principal + resultado ANOVA
     sig = _sig_label(p_valor)
-    sig_color = {"***": "#155436", "**": "#1a7a4a", "*": "#d97706", "ns": "#888"}.get(sig, "#333")
     ax.set_title(title, fontsize=13, fontweight="700", pad=14, loc="left")
 
     resultado_txt = (
@@ -290,6 +298,8 @@ def prueba1_precipitacion_enso(verbose: bool = False):
     df = clima.merge(enso[["anio", "mes", "fase_enso"]], on=["anio", "mes"], how="inner")
     df = df.dropna(subset=["precipitacion_mm", "fase_enso"])
     df = df[df["precipitacion_mm"] >= 0]
+    # Unidad independiente = un mes calendario (promedio de todas las estaciones), no cada lectura estación-mes
+    df = agregar_unidades_independientes(df, "precipitacion_mm", ["anio", "mes", "fase_enso"])
 
     orden_grupos = ["El Niño", "La Niña", "Neutro"]
     grupos_data: dict[str, np.ndarray] = {}
@@ -422,6 +432,7 @@ def prueba3_precipitacion_trimestre(verbose: bool = False):
     clima = pd.read_parquet(DATA_PROCESSED / "clima_mensual.parquet")
     df = clima.dropna(subset=["precipitacion_mm", "mes"])
     df = df[df["precipitacion_mm"] >= 0]
+    df = agregar_unidades_independientes(df, "precipitacion_mm", ["anio", "mes"])   # un valor por mes calendario
 
     def asignar_trimestre(m):
         if m in [1, 2, 3]:
@@ -502,6 +513,10 @@ def prueba4_precipitacion_nasa_municipios(verbose: bool = False):
     df = pd.read_parquet(nasa_path)
     df = df.dropna(subset=["precipitacion_mm", "nombre_municipio"])
     df = df[df["precipitacion_mm"] >= 0]
+    col_fecha = next((c for c in ("fecha", "date", "time") if c in df.columns), None)
+    if col_fecha is not None:   # días consecutivos no son independientes: se compara el promedio mensual
+        df = df.assign(_mes=pd.to_datetime(df[col_fecha]).dt.to_period("M").astype(str))
+        df = agregar_unidades_independientes(df, "precipitacion_mm", ["nombre_municipio", "_mes"])
 
     municipios = ["Ibagué", "Pasto", "Villavicencio"]
     grupos_data: dict[str, np.ndarray] = {}
@@ -516,7 +531,7 @@ def prueba4_precipitacion_nasa_municipios(verbose: bool = False):
 
     n_por_grupo = {k: len(v) for k, v in grupos_data.items()}
     print(f"  Registros por grupo: {n_por_grupo}")
-    print(f"  Fuente: NASA POWER reanalysis MERRA-2 (precipitación diaria mm)")
+    print("  Fuente: NASA POWER reanalysis MERRA-2 (precipitación diaria mm)")
 
     lev_p, f, p = _run_anova(grupos_data)
     sig = p < 0.05
@@ -575,6 +590,9 @@ def print_summary():
             "Levene p":      f"{r.levene_p:.4f}",
             "F":             f"{r.f_stat:.3f}",
             "p-valor":       f"{r.p_valor:.6f}",
+            "Kruskal p":     f"{r.kruskal_p:.6f}",
+            "eta2":          f"{r.eta2:.3f}",
+            "Efecto":        etiqueta_efecto(r.eta2),
             "Sig.":          _sig_label(r.p_valor),
             "Conclusión":    "SIGNIFICATIVA" if r.significativa else "No significativa",
         })
@@ -599,8 +617,22 @@ def print_summary():
 #  Entrypoint
 # ─────────────────────────────────────────────────────────────────────
 
+def exportar_a_web() -> None:
+    """Copia el resumen (JSON) y las imágenes a web/public, de donde las lee la página Metodología."""
+    import json
+    import shutil
+
+    web = Path(__file__).resolve().parent.parent / "web" / "public"
+    df = pd.read_csv(REPORT_DIR / "anova_resumen.csv", encoding="utf-8-sig", dtype=str)
+    (web / "anova_data.json").write_text(
+        json.dumps({"pruebas": df.to_dict("records")}, ensure_ascii=False, indent=2), encoding="utf-8")
+    for png in REPORT_DIR.glob("anova_*.png"):
+        shutil.copy2(png, web / "images" / png.name)
+    print(f"Exportado a {web}")
+
+
 def run_all(verbose: bool = False):
-    pruebas = [prueba1_precipitacion_enso, prueba2_precio_tipo_insumo, prueba3_precipitacion_trimestre, prueba4_precipitacion_nasa_municipios]
+    pruebas = [prueba1_precipitacion_enso, prueba3_precipitacion_trimestre, prueba4_precipitacion_nasa_municipios]
     for fn in pruebas:
         try:
             fn(verbose=verbose)
@@ -612,6 +644,10 @@ def run_all(verbose: bool = False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Pruebas ANOVA — AgroIA Colombia")
     parser.add_argument("--verbose", "-v", action="store_true",
-                        help="Mostrar tablas Tukey HSD post-hoc")
+                        help="Mostrar tablas del post-hoc (Mann-Whitney + Holm)")
+    parser.add_argument("--export-web", action="store_true",
+                        help="Copiar anova_data.json e imágenes a web/public para la página Metodología")
     args = parser.parse_args()
     run_all(verbose=args.verbose)
+    if args.export_web:
+        exportar_a_web()

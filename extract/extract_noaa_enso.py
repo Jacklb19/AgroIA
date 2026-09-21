@@ -2,7 +2,6 @@ import pandas as pd
 import requests
 import logging
 import io
-from pathlib import Path
 from config.settings import DATA_RAW, YEAR_END
 
 logger = logging.getLogger(__name__)
@@ -36,8 +35,8 @@ def extract_noaa_enso() -> pd.DataFrame:
         # El archivo de NOAA es texto ascii con cabecera YR MON TOTAL CLIM ANOM
         df = pd.read_csv(io.StringIO(text), sep=r'\s+', engine='python')
         
-        # Filtrar años relevantes (2015+ hasta el año operativo actual del pipeline)
-        df = df[(df["YR"] >= 2015) & (df["YR"] <= YEAR_END)]
+        # Serie completa desde 2000 (permite derivar años Niño y climatologías; antes solo desde 2015)
+        df = df[(df["YR"] >= 2000) & (df["YR"] <= YEAR_END)]
         
         # Determinar fase ENSO: ANOM > 0.5 (Niño), < -0.5 (Niña), resto (Neutro)
         def get_fase(anom):
@@ -46,7 +45,8 @@ def extract_noaa_enso() -> pd.DataFrame:
             return "Neutro"
             
         df["fase_enso"] = df["ANOM"].apply(get_fase)
-        df = df.rename(columns={"YR": "anio", "MON": "mes", "ANOM": "indice_spi"})
+        # ANOM es la anomalía de temperatura del Niño 3.4 (ONI), no un SPI: se guarda como indice_oni
+        df = df.rename(columns={"YR": "anio", "MON": "mes", "ANOM": "indice_oni"})
         df["fuente_origen"] = "NOAA ONI"
         df["es_sintetico"] = False
         
@@ -70,15 +70,15 @@ def extract_noaa_enso() -> pd.DataFrame:
         
         # Simular ciclo ENSO (aprox 3-7 años)
         t = np.arange(len(df_synth))
-        enso_cycle = np.sin(2 * np.pi * t / 48) + np.random.normal(0, 0.3, len(t))
-        df_synth["indice_spi"] = np.round(enso_cycle, 2)
+        enso_cycle = np.sin(2 * np.pi * t / 48) + np.random.default_rng(42).normal(0, 0.3, len(t))
+        df_synth["indice_oni"] = np.round(enso_cycle, 2)
         
         def get_fase(anom):
             if anom >= 0.5: return "El Niño"
             if anom <= -0.5: return "La Niña"
             return "Neutro"
             
-        df_synth["fase_enso"] = df_synth["indice_spi"].apply(get_fase)
+        df_synth["fase_enso"] = df_synth["indice_oni"].apply(get_fase)
         df_synth["fuente_origen"] = "NOAA ONI (fallback sintetico)"
         df_synth["es_sintetico"] = True
         

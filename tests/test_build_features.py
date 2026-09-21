@@ -1,5 +1,4 @@
 """Tests sobre build_features sin BD: usamos motor SQLite en memoria con tablas mínimas."""
-import pandas as pd
 import pytest
 from sqlalchemy import create_engine, text
 

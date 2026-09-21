@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { Icon } from "./icons";
+import { useApi } from "@/lib/useApi";
 
 /* ─── Metadata editorial de cada prueba ANOVA ─────────────────────────────── */
 const ANOVA_TESTS = [
@@ -10,30 +11,19 @@ const ANOVA_TESTS = [
     titulo: "Lluvia y fenómeno El Niño / La Niña",
     pregunta: "¿Llueve diferente según el estado del clima global?",
     explicacion:
-      "Comparamos cuánto llueve en Colombia durante tres fases climáticas: El Niño (calentamiento del Pacífico), La Niña (enfriamiento) y años Neutros. El resultado confirma que las diferencias son reales y no por azar: durante La Niña llueve bastante más que durante El Niño. Esto explica por qué los años con El Niño suelen traer sequía y mayores pérdidas en los cultivos.",
-    fuente: "IDEAM · 47 819 registros",
+      "Comparamos la lluvia mensual promedio de Colombia durante El Niño, La Niña y meses Neutros (un dato por mes calendario). Existe una diferencia, pero es pequeña: la fase ENSO explica solo una parte reducida de la variación de un mes a otro, y únicamente El Niño frente a Neutro se distingue con claridad. Que una diferencia sea estadísticamente significativa no significa que sea grande: mira el tamaño del efecto.",
+    fuente: "IDEAM · promedio mensual nacional",
     color: "#1e4d7b",
     colorLight: "#e8f0f7",
-  },
-  {
-    id: 2,
-    imagen: "anova_precio_tipo_insumo.png",
-    titulo: "Precio de insumos según su tipo",
-    pregunta: "¿Cuestan lo mismo los fertilizantes, las semillas y los agroquímicos?",
-    explicacion:
-      "Comparamos el precio de cinco categorías de insumos agrícolas (fertilizantes, agroquímicos, semillas, combustible y mano de obra). El análisis confirma que los precios son significativamente distintos entre sí. El fertilizante es el insumo con precio más alto en promedio. Esta diferencia es importante para que los agricultores puedan planificar mejor sus costos.",
-    fuente: "DANE · SIPSA · 5 472 registros",
-    color: "#b45309",
-    colorLight: "#fef5e7",
   },
   {
     id: 3,
     imagen: "anova_precipitacion_trimestre.png",
     titulo: "Lluvias según la época del año",
-    pregunta: "¿Hay meses con más lluvia que otros en Colombia?",
+    pregunta: "¿Hay épocas con más lluvia que otras en Colombia?",
     explicacion:
-      "Colombia tiene dos épocas lluviosas al año (régimen bimodal). Dividimos el año en cuatro trimestres y confirmamos estadísticamente que sí existen diferencias significativas de precipitación entre ellos. Los trimestres de abril–junio y octubre–diciembre son los más lluviosos. Conocer este patrón ayuda a programar mejor la siembra y la cosecha.",
-    fuente: "IDEAM · 47 819 registros",
+      "Colombia tiene un régimen de lluvias marcado por la época del año. Comparamos la lluvia mensual promedio por trimestre: el primer trimestre (enero–marzo) es claramente más seco que los demás y el efecto es grande. Conocer este patrón ayuda a programar la siembra y la cosecha.",
+    fuente: "IDEAM · promedio mensual nacional",
     color: "#155436",
     colorLight: "#ecf7f0",
   },
@@ -43,8 +33,8 @@ const ANOVA_TESTS = [
     titulo: "Lluvia en tres ciudades colombianas (datos NASA)",
     pregunta: "¿Llueve igual en Ibagué, Pasto y Villavicencio?",
     explicacion:
-      "Usamos datos del satélite de la NASA (sistema MERRA-2, diferente a las estaciones terrestres del IDEAM) para comparar la precipitación diaria en tres ciudades con climas distintos durante 2024. El resultado muestra que Villavicencio (Llanos Orientales) llueve significativamente más que Ibagué (zona andina de Tolima) y Pasto (sur andino de Nariño). Esto valida que diferentes fuentes de datos capturan correctamente las diferencias climáticas regionales.",
-    fuente: "NASA POWER MERRA-2 · 1 098 registros diarios",
+      "Con datos del satélite de la NASA (MERRA-2, distinto de las estaciones del IDEAM) comparamos el promedio mensual de lluvia en tres ciudades durante 2024. Con solo 12 meses por ciudad, la muestra es pequeña: hay una diferencia global, pero ningún par de ciudades se distingue de forma concluyente después de corregir por comparaciones múltiples.",
+    fuente: "NASA POWER MERRA-2 · 12 meses de 2024 por ciudad",
     color: "#7B2D8B",
     colorLight: "#f5eef8",
   },
@@ -68,7 +58,7 @@ function SigBadge({ sig }) {
 
 function AnovaCard({ test, datos }) {
   const [open, setOpen] = useState(false);
-  const row = datos.find((r) => r["Prueba"]?.includes(test.id === 1 ? "ENSO" : test.id === 2 ? "Tipo" : test.id === 3 ? "Trimestre" : "NASA"));
+  const row = datos.find((r) => r["Prueba"]?.includes(test.id === 1 ? "ENSO" : test.id === 3 ? "Trimestre" : "NASA"));
 
   return (
     <div style={{
@@ -122,7 +112,7 @@ function AnovaCard({ test, datos }) {
         </p>
 
         {/* Fuente */}
-        <div style={{ fontSize: 11, color: "var(--ink-400)", borderTop: "1px solid var(--ink-100)", paddingTop: 8 }}>
+        <div style={{ fontSize: 11, color: "var(--ink-500)", borderTop: "1px solid var(--ink-100)", paddingTop: 8 }}>
           Datos: {test.fuente}
         </div>
 
@@ -148,10 +138,12 @@ function AnovaCard({ test, datos }) {
                 display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 16px",
                 color: "var(--ink-700)",
               }}>
-                <span>F-estadístico</span><span style={{ color: "var(--ink-900)", fontWeight: 600 }}>{parseFloat(row["F"]).toFixed(3)}</span>
+                <span>F de Welch</span><span style={{ color: "var(--ink-900)", fontWeight: 600 }}>{parseFloat(row["F"]).toFixed(3)}</span>
+                <span>Tamaño del efecto (η²)</span><span style={{ fontWeight: 700 }}>{row["eta2"] ?? "—"} · {row["Efecto"] ?? "n/d"}</span>
+                <span>Kruskal-Wallis p</span><span>{row["Kruskal p"] != null ? (parseFloat(row["Kruskal p"]) < 0.0001 ? "< 0.0001" : row["Kruskal p"]) : "—"}</span>
                 <span>p-valor</span><span style={{ color: parseFloat(row["p-valor"]) < 0.05 ? "#155436" : "var(--ink-600)", fontWeight: 600 }}>{parseFloat(row["p-valor"]) < 0.0001 ? "< 0.0001" : row["p-valor"]}</span>
                 <span>Grupos</span><span>{row["Grupos"]}</span>
-                <span>N total</span><span>{parseInt(row["N total"]).toLocaleString("es-CO")}</span>
+                <span>Unidades (meses)</span><span>{parseInt(row["N total"]).toLocaleString("es-CO")}</span>
                 <span>Levene p</span><span>{row["Levene p"]}</span>
                 <span>Significancia</span><span style={{ fontWeight: 700 }}>{row["Sig."]}</span>
               </div>
@@ -173,7 +165,7 @@ function SectionAnova() {
     <div className="card" style={{ marginTop: 28 }}>
       <div className="card-head">
         <div>
-          <h3>Análisis estadístico — Pruebas ANOVA</h3>
+          <h3>Análisis estadístico — comparación de grupos</h3>
           <div className="panel-sub">¿Qué confirman los datos con evidencia estadística?</div>
         </div>
         <span className="src-badge">validate/anova_tests.py</span>
@@ -191,15 +183,15 @@ function SectionAnova() {
               ¿Qué es un análisis ANOVA?
             </p>
             <p style={{ margin: 0, fontSize: 13, color: "var(--ink-700)", lineHeight: 1.65 }}>
-              ANOVA es una prueba matemática que nos dice si las diferencias que vemos entre grupos de datos son <strong>reales</strong> o simplemente producto del azar. Por ejemplo: si llueve más durante La Niña que en El Niño, ¿es una diferencia consistente o fue casualidad de ese año? Cada prueba abajo responde una pregunta concreta con evidencia estadística. El símbolo <strong>***</strong> indica que la diferencia es altamente significativa (probabilidad menor al 0.1% de que sea azar).
+              ANOVA compara grupos para ver si las diferencias entre ellos pueden ser producto del azar. Por ejemplo: si llueve más durante La Niña que en El Niño. Dos advertencias importantes: (1) comparamos <strong>un dato por mes</strong>, no miles de lecturas de estaciones del mismo mes, porque esas lecturas no son independientes; y (2) un valor p pequeño solo dice que hay <em>alguna</em> diferencia, no que sea grande: por eso se reporta el <strong>tamaño del efecto (η²)</strong> — la fracción de la variación que explica el factor.
             </p>
           </div>
         </div>
 
-        {/* Grid de 4 pruebas */}
+        {/* Grid de pruebas */}
         <div style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))",
+          gridTemplateColumns: "repeat(auto-fill, minmax(min(340px, 100%), 1fr))",
           gap: 20,
         }}>
           {ANOVA_TESTS.map((test) => (
@@ -209,7 +201,7 @@ function SectionAnova() {
 
         {/* Nota protocolo */}
         <div style={{ fontSize: 11.5, color: "var(--ink-500)", marginTop: 18, lineHeight: 1.6 }}>
-          <strong>Protocolo estadístico:</strong> cada prueba ejecuta (1) Levene para verificar homogeneidad de varianzas, (2) ANOVA de una vía con <code>scipy.stats.f_oneway</code>, y (3) Tukey HSD post-hoc cuando p &lt; 0.05 para identificar qué pares de grupos difieren. Gráficos generados con matplotlib · boxplots con n por grupo.
+          <strong>Protocolo estadístico:</strong> cada prueba agrega a unidades independientes y ejecuta (1) Levene (por la mediana) para las varianzas, (2) ANOVA de Welch, que no exige varianzas iguales, (3) Kruskal-Wallis, que no exige normalidad, (4) tamaño del efecto η² y (5) comparaciones por pares con Mann-Whitney y corrección de Holm. Se eliminó la prueba de precios de insumos por tipo: comparaba unidades distintas. Código en <code>validate/anova_robusto.py</code>.
         </div>
       </div>
     </div>
@@ -226,8 +218,10 @@ function fmtFilas(n) {
 export default function PageMetodologia() {
   const [fuentes, setFuentes] = useState([]);
   const [calidad, setCalidad] = useState([]);
+  const modeloApi = useApi("/api/modelo/metricas");
+  const modeloR = modeloApi.data?.rendimiento ?? null;
   useEffect(() => {
-    fetch("/api/catalogo").then((r) => r.json()).then(setFuentes).catch(() => setFuentes([]));
+    fetch("/api/catalogo").then((r) => r.json()).then((d) => setFuentes(Array.isArray(d) ? d : [])).catch(() => setFuentes([]));
     fetch("/api/calidad").then((r) => r.json()).then((d) => setCalidad(d.reportes || [])).catch(() => setCalidad([]));
   }, []);
 
@@ -302,8 +296,8 @@ export default function PageMetodologia() {
             <ul>
               <li>Extracción Socrata + GeoServer + scraping institucional</li>
               <li>Armonización municipio · cultivo · ciclo (DIVIPOLA)</li>
-              <li>Detección de outliers por z-score robusto</li>
-              <li>Feature store en Parquet versionado</li>
+              <li>Filtros de rango y deduplicación por clave natural</li>
+              <li>Feature store calculado desde el star schema en cada entrenamiento</li>
             </ul>
           </div>
           <div className="method-card">
@@ -320,10 +314,10 @@ export default function PageMetodologia() {
             <div className="icon-wrap"><Icon.tree /></div>
             <h3>Modelo principal</h3>
             <ul>
-              <li>XGBoost con tuning bayesiano (Optuna · 200 trials)</li>
-              <li>~40 features: clima estacional + lags 1y/3y + ENSO + SIPSA + SIPRA</li>
-              <li>Hold-out temporal por año + TimeSeriesSplit 5-fold</li>
-              <li>Inferencia sobre municipios × cultivos del star schema</li>
+              <li>XGBoost que aprende la <strong>desviación respecto al promedio histórico</strong> del municipio × cultivo</li>
+              <li>Rasgos: clima anual + rezagos 1 y 3 años + ENSO (ONI) + precios SIPSA + índice de insumos. Los datos faltantes se dejan vacíos (no se rellenan con 0)</li>
+              <li>Ajuste bayesiano (Optuna) con validación temporal por año</li>
+              <li>Aptitud de suelo (UPRA) fuera del modelo por ahora: su servicio dejó de estar disponible</li>
             </ul>
           </div>
           <div className="method-card amber">
@@ -331,9 +325,10 @@ export default function PageMetodologia() {
             <h3>Validación y métricas</h3>
             <ul>
               <li>Métricas reales en <code>model_version.metricas_json</code></li>
-              <li>Train: años &lt; 80% percentil · Test: últimos 20%</li>
-              <li>Reporta MAE, RMSE, R², CV-MAE de Optuna</li>
-              <li>Banda de confianza ± MAE en cada predicción</li>
+              <li>El último año con datos se reserva como <strong>año de prueba</strong>: no se usa para entrenar ni para ajustar</li>
+              <li>Se compara siempre con una línea base (promedio histórico)</li>
+              <li>Rango probable p10–p90 calibrado con los errores reales de validación; se reporta su cobertura</li>
+              <li>Solo se publican predicciones fuera de muestra</li>
             </ul>
           </div>
           <div className="method-card red">
@@ -351,8 +346,8 @@ export default function PageMetodologia() {
         <div className="metrics-table-wrap">
           <div className="head">
             <div>
-              <h3>XGBoost vs. baselines</h3>
-              <p>Hold-out temporal · evaluación sobre los últimos años disponibles.</p>
+              <h3>Modelo vs. línea base</h3>
+              <p>Evaluación fuera de muestra sobre el último año con datos.</p>
             </div>
             <span className="src-badge">model_version · activo</span>
           </div>
@@ -361,23 +356,35 @@ export default function PageMetodologia() {
               <tr><th>Modelo</th><th colSpan={3}>Métricas</th><th>Notas</th></tr>
             </thead>
             <tbody>
-              <tr>
-                <td><strong>XGBoost — campeón</strong> <span className="winner-cell">activo</span></td>
-                <td className="num best" colSpan={3} style={{ textAlign: "left", fontFamily: "var(--font-mono)", fontSize: 12 }}>
-                  Métricas dinámicas — ver <code>model_version.metricas_json</code> tras cada entrenamiento.
-                </td>
-                <td className="num best" style={{ fontSize: 11 }}>Optuna 200 trials · TS-Split 5</td>
-              </tr>
-              <tr>
-                <td>Regresión lineal multivariada</td>
-                <td className="num mid" colSpan={3}>Baseline interpretable</td>
-                <td className="num mid" style={{ fontSize: 11 }}>Referencia</td>
-              </tr>
-              <tr>
-                <td>Promedio móvil quinquenal (naive)</td>
-                <td className="num worst" colSpan={3}>Baseline mínimo</td>
-                <td className="num worst" style={{ fontSize: 11 }}>Línea base</td>
-              </tr>
+              {modeloR ? (
+                <>
+                  <tr>
+                    <td><strong>XGBoost</strong> <span className="winner-cell">activo</span></td>
+                    <td className="num">MAE {modeloR.mae_t_ha} t/ha</td>
+                    <td className="num">RMSE {modeloR.rmse_t_ha} t/ha</td>
+                    <td className="num">R² {modeloR.r2}</td>
+                    <td style={{ fontSize: 11 }}>Año de prueba {modeloR.anio_corte} · {modeloR.n_test?.toLocaleString("es-CO")} predicciones · {modeloR.pruebas_optuna} pruebas de ajuste</td>
+                  </tr>
+                  {modeloR.linea_base && (
+                    <tr>
+                      <td>Línea base: {modeloR.linea_base.descripcion}</td>
+                      <td className="num">MAE {modeloR.linea_base.mae_t_ha} t/ha</td>
+                      <td className="num">RMSE {modeloR.linea_base.rmse_t_ha} t/ha</td>
+                      <td className="num">R² {modeloR.linea_base.r2}</td>
+                      <td style={{ fontSize: 11 }}>Sin modelo: repite lo que pasó en años anteriores</td>
+                    </tr>
+                  )}
+                  <tr>
+                    <td colSpan={5} style={{ fontSize: 12 }}>
+                      El modelo {modeloR.mejora_mae_vs_base_pct >= 0 ? "reduce" : "aumenta"} el error absoluto en <strong>{Math.abs(modeloR.mejora_mae_vs_base_pct)} %</strong> respecto a la línea base.
+                      {modeloR.cobertura_p10_p90 != null && <> El rango p10–p90 contiene el valor real en el <strong>{modeloR.cobertura_p10_p90} %</strong> de los casos (esperado: 80 %).</>}
+                      {" "}El R² es alto porque los cultivos tienen rendimientos muy distintos entre sí; por eso la comparación relevante es el MAE frente a la línea base.
+                    </td>
+                  </tr>
+                </>
+              ) : (
+                <tr><td colSpan={5} style={{ fontSize: 12 }}>Todavía no hay un modelo de rendimiento entrenado y registrado.</td></tr>
+              )}
             </tbody>
           </table>
           <div style={{ fontSize: 12, color: "var(--gray-600)", marginTop: 10 }}>

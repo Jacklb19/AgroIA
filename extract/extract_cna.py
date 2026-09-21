@@ -1,52 +1,57 @@
+"""
+extract_cna.py — Censo Nacional Agropecuario 2014 (DANE): uso del suelo por municipio.
+
+Fuente: anexos municipales del Boletín 1, "Cuadro 2": área (ha) en pastos, rastrojo, agrícola e
+infraestructura agropecuaria en el área rural dispersa censada. Se cargan tal cual.
+
+Antes este extractor fabricaba `area_cultivos_permanentes_ha` = 60 % y `area_cultivos_transitorios_ha`
+= 40 % de una columna equivocada. Esas cifras NO existen en la fuente: el Cuadro 2 no separa cultivos
+permanentes y transitorios, así que esas dos columnas quedan vacías (NULL) en vez de inventarse.
+"""
 import logging
+
 import pandas as pd
-import requests
 import urllib3
-urllib3.disable_warnings()
 
 from config.settings import DATA_RAW
 
+urllib3.disable_warnings()
 logger = logging.getLogger(__name__)
 
+URL_USO_SUELO = "https://www.dane.gov.co/files/CensoAgropecuario/entrega-definitiva/Boletin-1-Uso-del-suelo/1-Anexos-municipales.xls"
+HOJA = "Cuadro 2"
+ANIO_CENSO = 2014
+# posición de cada columna en la hoja (verificado sobre el archivo real)
+COL_ID_MUNICIPIO, COL_PASTOS, COL_RASTROJO, COL_AGRICOLA, COL_INFRA = 2, 4, 5, 6, 7
+
+
+def parsear_cuadro_uso_suelo(raw: pd.DataFrame) -> pd.DataFrame:
+    """Recibe la hoja completa (header=None) y devuelve una fila por municipio con códigos DIVIPOLA válidos."""
+    df = raw[raw[COL_ID_MUNICIPIO].astype(str).str.strip().str.fullmatch(r"\d{5}")].copy()
+    out = pd.DataFrame({
+        "id_municipio": df[COL_ID_MUNICIPIO].astype(str).str.strip(),
+        "anio_censo": ANIO_CENSO,
+        "area_pastos_ha": pd.to_numeric(df[COL_PASTOS], errors="coerce"),
+        "area_rastrojo_ha": pd.to_numeric(df[COL_RASTROJO], errors="coerce"),
+        "area_agricola_ha": pd.to_numeric(df[COL_AGRICOLA], errors="coerce"),
+        "area_infraestructura_ha": pd.to_numeric(df[COL_INFRA], errors="coerce"),
+    })
+    return out.reset_index(drop=True)
+
+
 def extract_cna() -> pd.DataFrame:
-    """
-    Descarga anexos municipales del Censo Nacional Agropecuario 2014 desde DANE.
-    Dado que es un dataset estático histórico, los formatos de Excel son fijos.
-    """
-    logger.info("Iniciando extracción automatizada de CNA 2014 (DANE)...")
-    
-    # URLs fijas de los anexos municipales del CNA 2014 alojados en el DANE
-    url_uso_suelo = "https://www.dane.gov.co/files/CensoAgropecuario/entrega-definitiva/Boletin-1-Uso-del-suelo/1-Anexos-municipales.xls"
-    url_tenencia = "https://www.dane.gov.co/files/CensoAgropecuario/entrega-definitiva/Boletin-5-Etnicos/5-Anexos-municipales.xls" # Ejemplo
-    
+    """Descarga y parsea el Cuadro 2 del CNA 2014. Vacío si la fuente no responde."""
+    logger.info("Extrayendo CNA 2014 (DANE, uso del suelo por municipio)...")
     try:
-        # Descargamos Uso del Suelo (Cuadro 1)
-        logger.info(f"Descargando {url_uso_suelo}...")
-        df_uso = pd.read_excel(url_uso_suelo, sheet_name=2, header=None, skiprows=10)
-        
-        # Las columnas en el Excel de Uso de Suelo del DANE son:
-        # 0: _, 1: Cod Depto, 2: Depto, 3: Cod Municipio, 4: Municipio, 5: Area Agricola, etc.
-        df_uso = df_uso[[2, 4, 5, 6]].copy()
-        df_uso.columns = ["id_municipio", "area_agropecuaria_ha", "area_bosques_ha", "area_no_agropecuaria_ha"]
-        
-        # Limpieza básica
-        df_uso = df_uso.dropna(subset=["id_municipio"])
-        df_uso["id_municipio"] = pd.to_numeric(df_uso["id_municipio"], errors="coerce").astype("Int64").astype(str).str.zfill(5)
-        df_uso = df_uso[df_uso["id_municipio"] != "<NA>"]
-        df_uso["anio_censo"] = 2014
-        
-        # Para hacer un proof-of-concept de la automatización sin romper las reglas de negocio,
-        # agregaremos las columnas que espera el schema, inicializándolas con datos vacíos o derivados.
-        # (Idealmente habría que cruzar todos los 12 anexos, pero por rendimiento extraemos lo base).
-        df_uso["area_cultivos_permanentes_ha"] = pd.to_numeric(df_uso["area_agropecuaria_ha"], errors='coerce') * 0.6 # Aproximación
-        df_uso["area_cultivos_transitorios_ha"] = pd.to_numeric(df_uso["area_agropecuaria_ha"], errors='coerce') * 0.4 # Aproximación
-        
+        raw = pd.read_excel(URL_USO_SUELO, sheet_name=HOJA, header=None)
+        df = parsear_cuadro_uso_suelo(raw)
+        if df.empty:
+            logger.error("CNA: la hoja '%s' no contiene municipios con código DIVIPOLA; ¿cambió el formato?", HOJA)
+            return pd.DataFrame()
         out = DATA_RAW / "cna_raw_automatizado.csv"
-        df_uso.to_csv(out, index=False)
-        logger.info(f"CNA 2014 extraído: {len(df_uso)} municipios consolidados -> {out}")
-        
-        return df_uso
-        
+        df.to_csv(out, index=False)
+        logger.info("CNA 2014: %s municipios -> %s", len(df), out)
+        return df
     except Exception as e:
-        logger.error(f"Error descargando CNA desde DANE: {e}")
+        logger.error("Error descargando CNA desde DANE: %s", e)
         return pd.DataFrame()

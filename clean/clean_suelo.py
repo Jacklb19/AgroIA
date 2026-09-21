@@ -1,5 +1,4 @@
 import logging
-from pathlib import Path
 
 import geopandas as gpd
 import pandas as pd
@@ -90,7 +89,15 @@ def _resumir_por_codigo(gdf: gpd.GeoDataFrame, cod_col: str) -> pd.DataFrame:
     dedup_keys = ["id_municipio"]
     if result["producto"].notna().any():
         dedup_keys.append("producto")
-    result = result.drop_duplicates(subset=dedup_keys, keep="first")
+
+    # Un municipio tiene varios polígonos con distinta clase de aptitud. Se toma la clase más frecuente
+    # (moda); antes se conservaba la primera fila, que era arbitraria.
+    def _moda(s):
+        s = s.dropna()
+        return s.mode().iloc[0] if not s.empty else None
+
+    otras = [c for c in result.columns if c not in dedup_keys]
+    result = result.groupby(dedup_keys, as_index=False, dropna=False).agg({c: _moda for c in otras})
 
     logger.info(
         "SIPRA aptitud (directo): %s registros — %s municipios",

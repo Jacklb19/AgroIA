@@ -5,7 +5,7 @@ import importlib
 def test_train_rendimiento_imports():
     mod = importlib.import_module("models.train_rendimiento")
     assert callable(mod.train_and_report)
-    assert mod.N_TRIALS_OPTUNA >= 100
+    assert mod.N_TRIALS_OPTUNA >= 20        # configurable con OPTUNA_TRIALS (por defecto 60)
     assert mod.RANDOM_SEED == 42
 
 

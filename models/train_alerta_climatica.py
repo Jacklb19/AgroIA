@@ -1,19 +1,22 @@
 """
-train_alerta_climatica.py — Clasificador de Riesgo Climático AgroIA Colombia
+train_alerta_climatica.py — Alerta climática ANTICIPADA (riesgo del mes siguiente) por municipio.
 
-Genera alertas de nivel BAJO / MEDIO / ALTO por municipio y periodo,
-cruzando datos climáticos IDEAM con la fase ENSO activa.
+Qué cambió y por qué
+- Antes: el "riesgo" se etiquetaba con una regla y el clasificador aprendía esa misma regla desde las mismas
+  columnas (evaluación circular: F1 alto no significaba nada) con split aleatorio y vacíos rellenados con 0.
+- Ahora:
+    * `_etiquetar_riesgo` es un ÍNDICE DE RIESGO POR REGLAS del mes observado (documentado, no un modelo).
+    * El modelo predice el índice del MES SIGUIENTE a partir de lo observado hasta el mes actual:
+      es un pronóstico real, evaluado con corte TEMPORAL (últimos meses fuera del entrenamiento) y
+      comparado con la línea base "el mes siguiente repetirá el nivel actual" (persistencia).
+    * Los vacíos se quedan como NaN (nunca 0) y solo se puntúan las reglas con datos disponibles.
+- pred_alerta_climatica: `activa` = TRUE solo para el pronóstico vigente del mes siguiente al último mes
+  con datos; los meses de prueba se guardan como historial fuera de muestra (activa = FALSE).
 
-Escribe resultados en:
-    - model_version     (registro de la versión con métricas)
-    - pred_alerta_climatica (predicciones por municipio/tiempo)
-
-Uso:
-    python -m models.train_alerta_climatica
+Uso:  python -m models.train_alerta_climatica
 """
 import json
 import logging
-from datetime import datetime
 
 import numpy as np
 import pandas as pd
@@ -22,352 +25,243 @@ from load.db import get_engine
 
 logger = logging.getLogger(__name__)
 
-# ── SQL para construir el dataset de entrenamiento ──────────────────────────
+MESES_PRUEBA = 6
+ETIQUETAS = {0: "BAJO", 1: "MEDIO", 2: "ALTO"}
+NOMBRE_MODELO = "xgboost_alerta_anticipada"
+NOMBRE_BASE = "persistencia_alerta"
+
+# Un solo registro por municipio y mes: promedio entre estaciones
 TRAIN_SQL = """
-WITH enso_municipio AS (
-    SELECT
-        m.id_municipio,
-        dt.anio,
-        dt.mes,
-        dt.id_tiempo,
-        ae.fase_enso,
-        ae.indice_spi,
-        ae.anomalia_precipitacion_pct,
-        ae.probabilidad_deficit_hidrico,
-        ae.probabilidad_exceso_hidrico
-    FROM dim_municipio m
-    JOIN dim_region_natural rn ON rn.id_region = m.id_region
-    JOIN fact_alerta_enso ae ON ae.id_region = rn.id_region
-    JOIN dim_tiempo dt ON dt.id_tiempo = ae.id_tiempo
-)
-SELECT
-    fc.id_municipio,
-    fc.id_tiempo,
-    dt.anio,
-    dt.mes,
-    fc.precipitacion_mm,
-    fc.temperatura_media_c,
-    fc.temperatura_max_c,
-    fc.temperatura_min_c,
-    fc.humedad_relativa_pct,
-    fc.brillo_solar_horas_dia,
-    COALESCE(em.fase_enso, 'Neutro')             AS fase_enso,
-    COALESCE(em.indice_spi, 0)                   AS indice_spi,
-    COALESCE(em.anomalia_precipitacion_pct, 0)   AS anomalia_precipitacion_pct,
-    COALESCE(em.probabilidad_deficit_hidrico, 0) AS prob_deficit,
-    COALESCE(em.probabilidad_exceso_hidrico, 0)  AS prob_exceso
+SELECT fc.id_municipio, fc.id_tiempo, dt.anio, dt.mes,
+       AVG(fc.precipitacion_mm)       AS precipitacion_mm,
+       AVG(fc.temperatura_media_c)    AS temperatura_media_c,
+       MAX(fc.temperatura_max_c)      AS temperatura_max_c,
+       MIN(fc.temperatura_min_c)      AS temperatura_min_c,
+       AVG(fc.humedad_relativa_pct)   AS humedad_relativa_pct,
+       AVG(fc.brillo_solar_horas_dia) AS brillo_solar_horas_dia,
+       MAX(ae.fase_enso)              AS fase_enso,
+       AVG(ae.indice_oni)             AS indice_oni,
+       AVG(ae.indice_spi)             AS indice_spi,
+       AVG(ae.anomalia_precipitacion_pct) AS anomalia_precipitacion_pct
 FROM fact_clima_mensual fc
-JOIN dim_tiempo dt ON dt.id_tiempo = fc.id_tiempo
-LEFT JOIN enso_municipio em
-    ON em.id_municipio = fc.id_municipio
-   AND em.id_tiempo = fc.id_tiempo
+JOIN dim_tiempo dt   ON dt.id_tiempo = fc.id_tiempo
+JOIN dim_municipio m ON m.id_municipio = fc.id_municipio
+LEFT JOIN fact_alerta_enso ae ON ae.id_tiempo = fc.id_tiempo AND ae.id_region = m.id_region
+GROUP BY fc.id_municipio, fc.id_tiempo, dt.anio, dt.mes
 """
 
-# ── Categorías de tipo de evento (consistente entre dashboard y chat) ─────
+# Tipos de evento que la regla SÍ puede determinar con las variables disponibles.
+# (Se quitó "Volatilidad de mercado", que nunca se asignaba, y "Plagas" pasa a ser una condición, no un evento.)
 TIPOS_EVENTO = {
-    "SEQUIA":        "Sequía severa",
-    "EXCESO_LLUVIA": "Exceso de lluvias",
-    "ESTRES_TERMICO":"Estrés térmico",
-    "PLAGAS":        "Plagas y enfermedades",
-    "MERCADO":       "Volatilidad de mercado",
-    "NORMAL":        "Sin evento crítico",
+    "SEQUIA":         "Sequía severa",
+    "EXCESO_LLUVIA":  "Exceso de lluvias",
+    "ESTRES_TERMICO": "Estrés térmico",
+    "PLAGAS":         "Condiciones propicias para plagas (regla)",
+    "NORMAL":         "Sin evento crítico",
 }
 
 
-def _clasificar_tipo_evento(row: pd.Series) -> str:
-    """
-    Clasifica el tipo de evento agronómico predominante.
-    Usa señales climáticas reales (SPI, anomalía, temperatura) en lugar de
-    la fase ENSO genérica.
-    """
-    spi      = float(row.get("indice_spi", 0) or 0)
-    anomalia = float(row.get("anomalia_precipitacion_pct", 0) or 0)
-    pdef     = float(row.get("prob_deficit", 0) or 0)
-    pexc     = float(row.get("prob_exceso", 0) or 0)
-    tmax     = float(row.get("temperatura_max_c", 0) or 0)
-    tmin     = float(row.get("temperatura_min_c", 0) or 0)
-    hum      = float(row.get("humedad_relativa_pct", 0) or 0)
+def _val(row, clave):
+    """Valor numérico o None si falta (NaN ≠ 0)."""
+    v = row.get(clave)
+    return None if v is None or pd.isna(v) else float(v)
 
-    # Sequía: SPI muy negativo, déficit hídrico alto o anomalía negativa fuerte
-    if spi < -1.0 or pdef > 0.7 or anomalia < -40:
+
+def _clasificar_tipo_evento(row) -> str:
+    """Evento predominante del mes observado según las señales disponibles; sin datos no se asume nada."""
+    spi, anom = _val(row, "indice_spi"), _val(row, "anomalia_precipitacion_pct")
+    tmax, tmin = _val(row, "temperatura_max_c"), _val(row, "temperatura_min_c")
+    hum = _val(row, "humedad_relativa_pct")
+    if (spi is not None and spi < -1.0) or (anom is not None and anom < -40):
         return TIPOS_EVENTO["SEQUIA"]
-
-    # Exceso de lluvia: SPI positivo alto, prob exceso alta, anomalía positiva fuerte
-    if spi > 1.0 or pexc > 0.7 or anomalia > 50:
+    if (spi is not None and spi > 1.0) or (anom is not None and anom > 50):
         return TIPOS_EVENTO["EXCESO_LLUVIA"]
-
-    # Estrés térmico: temperatura máxima extrema
-    if tmax > 36 or tmin < 4:
+    if (tmax is not None and tmax > 36) or (tmin is not None and tmin < 4):
         return TIPOS_EVENTO["ESTRES_TERMICO"]
-
-    # Plagas y enfermedades: humedad alta + temperatura cálida
-    if hum > 80 and 22 <= tmax <= 32:
+    if hum is not None and tmax is not None and hum > 80 and 22 <= tmax <= 32:
         return TIPOS_EVENTO["PLAGAS"]
-
     return TIPOS_EVENTO["NORMAL"]
 
 
-# ── Etiquetado heurístico de riesgo ─────────────────────────────────────────
-def _etiquetar_riesgo(row: pd.Series) -> str:
+def _etiquetar_riesgo(row) -> int:
     """
-    Regla heurística para generar la etiqueta de entrenamiento cuando no hay
-    etiquetas históricas reales. Se puede sustituir por datos validados por expertos.
+    Índice de riesgo por REGLAS (0 bajo, 1 medio, 2 alto) del mes observado. No es un modelo: es una
+    definición documentada. Solo suma las reglas cuyas variables existen.
     """
     score = 0
-
-    # SPI negativo = déficit hídrico
-    spi = row.get("indice_spi", 0) or 0
-    if spi < -1.5:
-        score += 3
-    elif spi < -1.0:
-        score += 2
-    elif spi < -0.5:
+    spi = _val(row, "indice_spi")
+    if spi is not None:
+        score += 3 if spi < -1.5 else 2 if spi < -1.0 else 1 if spi < -0.5 else 0
+        score += 2 if spi > 1.5 else 1 if spi > 1.0 else 0
+    anom = _val(row, "anomalia_precipitacion_pct")
+    if anom is not None:
+        score += 2 if abs(anom) > 50 else 1 if abs(anom) > 25 else 0
+    tmax = _val(row, "temperatura_max_c")
+    if tmax is not None:
+        score += 2 if tmax > 38 else 1 if tmax > 35 else 0
+    if str(row.get("fase_enso")) in ("El Niño", "La Niña"):
         score += 1
-
-    # SPI positivo extremo = exceso hídrico
-    if spi > 1.5:
-        score += 2
-    elif spi > 1.0:
-        score += 1
-
-    # Anomalía de precipitación
-    anomalia = row.get("anomalia_precipitacion_pct", 0) or 0
-    if abs(anomalia) > 50:
-        score += 2
-    elif abs(anomalia) > 25:
-        score += 1
-
-    # Probabilidad de déficit o exceso
-    if (row.get("prob_deficit", 0) or 0) > 0.7:
-        score += 2
-    if (row.get("prob_exceso", 0) or 0) > 0.7:
-        score += 2
-
-    # Temperatura extrema
-    temp_max = row.get("temperatura_max_c", 0) or 0
-    if temp_max > 38:
-        score += 2
-    elif temp_max > 35:
-        score += 1
-
-    # Fase ENSO
-    fase = str(row.get("fase_enso", "Neutro"))
-    if fase in ("El Niño", "La Niña"):
-        score += 1
-
-    if score >= 5:
-        return "ALTO"
-    elif score >= 2:
-        return "MEDIO"
-    return "BAJO"
+    return 2 if score >= 5 else 1 if score >= 2 else 0
 
 
-def load_training_frame(engine) -> pd.DataFrame:
-    try:
-        df = pd.read_sql(TRAIN_SQL, engine)
-        logger.info("Dataset climático: %s registros cargados", len(df))
-        return df
-    except Exception as exc:
-        logger.error("Error cargando dataset de entrenamiento climático: %s", exc)
-        return pd.DataFrame()
+# ── Dataset: rasgos del mes actual -> riesgo del mes siguiente ───────────
+def construir_dataset(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    df: una fila por municipio-mes (ver TRAIN_SQL). Agrega el índice observado, rezagos y el OBJETIVO
+    `y` = índice de riesgo del mes calendario siguiente (NaN si ese mes no existe: no se inventa).
+    """
+    df = df.sort_values(["id_municipio", "anio", "mes"]).reset_index(drop=True).copy()
+    df["periodo"] = df["anio"].astype(int) * 12 + df["mes"].astype(int)
+    df["riesgo_obs"] = [_etiquetar_riesgo(r) for r in df.to_dict("records")]
+
+    siguiente = df[["id_municipio", "periodo", "riesgo_obs"]].copy()
+    siguiente["periodo"] -= 1                         # el mes t+1 aporta su valor a la fila del mes t
+    df = df.merge(siguiente.rename(columns={"riesgo_obs": "y"}), on=["id_municipio", "periodo"], how="left")
+
+    previo = df[["id_municipio", "periodo", "precipitacion_mm", "anomalia_precipitacion_pct", "riesgo_obs"]].copy()
+    previo["periodo"] += 1                            # el mes t-1 aporta su valor a la fila del mes t
+    previo = previo.rename(columns={c: f"{c}_lag1" for c in ("precipitacion_mm", "anomalia_precipitacion_pct", "riesgo_obs")})
+    df = df.merge(previo, on=["id_municipio", "periodo"], how="left")
+
+    df["mes_sin"] = np.sin(2 * np.pi * df["mes"] / 12)
+    df["mes_cos"] = np.cos(2 * np.pi * df["mes"] / 12)
+    return df
 
 
-def _encode_fase_enso(series: pd.Series) -> pd.Series:
-    mapping = {"El Niño": 1, "La Niña": -1, "Neutro": 0}
-    return series.map(mapping).fillna(0).astype(int)
+FEATURES = [
+    "precipitacion_mm", "temperatura_media_c", "temperatura_max_c", "temperatura_min_c",
+    "humedad_relativa_pct", "brillo_solar_horas_dia", "indice_oni", "indice_spi", "anomalia_precipitacion_pct",
+    "precipitacion_mm_lag1", "anomalia_precipitacion_pct_lag1", "riesgo_obs", "riesgo_obs_lag1",
+    "mes_sin", "mes_cos",
+]
+
+
+def dividir_temporal(df: pd.DataFrame, meses_prueba: int = MESES_PRUEBA):
+    """
+    Corte temporal: los últimos `meses_prueba` meses con objetivo conocido son prueba; el entrenamiento solo
+    usa filas cuyo mes objetivo (periodo + 1) ocurrió ANTES del inicio de la prueba.
+    """
+    con_y = df.dropna(subset=["y"])
+    if con_y.empty:
+        raise ValueError("Ningún mes tiene un mes siguiente con datos: no hay objetivo para entrenar")
+    inicio_prueba = int(con_y["periodo"].max()) - meses_prueba + 1
+    train = con_y[con_y["periodo"] + 1 < inicio_prueba]
+    test = con_y[con_y["periodo"] >= inicio_prueba]
+    return train, test
+
+
+def metricas_clasificacion(y_real, y_pred) -> dict:
+    from sklearn.metrics import accuracy_score, f1_score
+    return {
+        "f1_ponderado": float(f1_score(y_real, y_pred, average="weighted", zero_division=0)),
+        "exactitud": float(accuracy_score(y_real, y_pred)),
+        "n": int(len(y_real)),
+    }
+
+
+# ── Persistencia ─────────────────────────────────────────────────────────
+def _guardar_predicciones(engine, df_pred: pd.DataFrame) -> None:
+    from load.db import upsert
+    from sqlalchemy import text
+
+    cols = ["id_municipio", "id_tiempo", "nivel_riesgo", "tipo_evento", "score_probabilidad",
+            "descripcion_generada", "activa", "id_version"]
+    df_out = df_pred[cols].drop_duplicates(subset=["id_municipio", "id_tiempo"]).astype(object)
+    df_out = df_out.where(df_out.notna(), None)
+    with engine.begin() as conn:
+        conn.execute(text("DELETE FROM pred_alerta_climatica"))       # las anteriores eran ajustes sobre el entrenamiento
+    upsert(engine, "pred_alerta_climatica", df_out, ["id_municipio", "id_tiempo"])
+    logger.info("pred_alerta_climatica: %s predicciones guardadas (%s vigentes)", len(df_out), int(df_out["activa"].sum()))
 
 
 def train_and_report(engine=None) -> dict:
-    """
-    Entrena el clasificador de alerta climática y persiste resultados en la BD.
+    """Entrena el pronóstico de riesgo del mes siguiente, lo evalúa fuera de muestra y guarda alertas."""
+    from models.train_rendimiento import _registrar_version
 
-    Returns:
-        dict con model_name, metrics y n_predicciones
-    """
-    if engine is None:
-        engine = get_engine()
-
-    df = load_training_frame(engine)
+    engine = engine or get_engine()
+    df = pd.read_sql(TRAIN_SQL, engine)
     if df.empty:
-        raise ValueError(
-            "No hay datos climáticos suficientes para entrenar el modelo de alertas. "
-            "Ejecuta primero el pipeline ETL core con datos IDEAM."
-        )
+        raise ValueError("No hay datos climáticos suficientes para entrenar el modelo de alertas. "
+                         "Ejecuta primero el ETL core con datos IDEAM.")
 
-    # ── Etiquetado ──────────────────────────────────────────────────────────
-    df["nivel_riesgo"] = df.apply(_etiquetar_riesgo, axis=1)
-    logger.info("Distribución de etiquetas:\n%s", df["nivel_riesgo"].value_counts().to_string())
+    df = construir_dataset(df)
+    train, test = dividir_temporal(df)
+    X = lambda d: d[FEATURES].astype("float32")      # NaN se conserva
+    logger.info("Alertas: %s filas de entrenamiento, %s de prueba (últimos %s meses)", len(train), len(test), MESES_PRUEBA)
 
-    # ── Features ────────────────────────────────────────────────────────────
-    df["fase_enso_enc"] = _encode_fase_enso(df["fase_enso"])
-    feature_cols = [
-        "precipitacion_mm",
-        "temperatura_media_c",
-        "temperatura_max_c",
-        "temperatura_min_c",
-        "humedad_relativa_pct",
-        "brillo_solar_horas_dia",
-        "fase_enso_enc",
-        "indice_spi",
-        "anomalia_precipitacion_pct",
-        "prob_deficit",
-        "prob_exceso",
-        "anio",
-        "mes",
-    ]
-    X = df[feature_cols].apply(pd.to_numeric, errors="coerce").fillna(0)
-    label_map = {"BAJO": 0, "MEDIO": 1, "ALTO": 2}
-    y = df["nivel_riesgo"].map(label_map)
-
-    # ── Verificar que hay al menos 2 clases ──────────────────────────────────
-    n_clases = y.nunique()
-    if n_clases < 2:
-        logger.warning(
-            "Solo una clase de riesgo presente (%s). "
-            "Se necesitan datos ENSO con SPI/anomalía diversificados para entrenar. "
-            "Guardando predicciones heurísticas sin modelo supervisado.",
-            df["nivel_riesgo"].unique().tolist(),
-        )
-        metrics = {"f1_weighted": 0.0, "note": "single_class_no_model"}
-        id_version = _registrar_version(engine, "heuristica_alerta_climatica", metrics)
-        # Guardar las predicciones heurísticas directamente
-        df_pred = df[["id_municipio", "id_tiempo"]].copy()
-        df_pred["nivel_riesgo"]       = df["nivel_riesgo"].values
-        df_pred["tipo_evento"]        = df.apply(_clasificar_tipo_evento, axis=1).values
-        df_pred["score_probabilidad"] = 0.5
-        df_pred["descripcion_generada"] = df_pred.apply(
-            lambda r: f"Alerta {r['nivel_riesgo']} — {r['tipo_evento']} (heurística).",
-            axis=1,
-        )
-        df_pred["activa"]     = True
-        df_pred["id_version"] = id_version
-        _guardar_predicciones(engine, df_pred)
-        return {"model_name": "heuristica_alerta_climatica", "metrics": metrics, "n_predicciones": len(df_pred)}
-
-    # ── Dividir datos ────────────────────────────────────────────────────────
-    from sklearn.model_selection import train_test_split
-    from sklearn.metrics import classification_report, f1_score
-
-    class_counts = y.value_counts()
-    stratify_arg = y if not class_counts.empty and class_counts.min() >= 2 else None
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=stratify_arg
-    )
-
-    # ── Modelo ───────────────────────────────────────────────────────────────
-    try:
+    base_test = metricas_clasificacion(test["y"].astype(int), test["riesgo_obs"].astype(int))
+    tiene_modelo = train["y"].nunique() >= 2
+    if tiene_modelo:
         from xgboost import XGBClassifier
-        model = XGBClassifier(
-            n_estimators=200,
-            max_depth=5,
-            learning_rate=0.05,
-            subsample=0.85,
-            colsample_bytree=0.85,
-            random_state=42,
-            use_label_encoder=False,
-            eval_metric="mlogloss",
-        )
-        model_name = "xgboost_alerta_climatica"
-    except ImportError:
-        from sklearn.ensemble import RandomForestClassifier
-        model = RandomForestClassifier(n_estimators=200, random_state=42, n_jobs=-1)
-        model_name = "random_forest_alerta_climatica"
+        modelo = XGBClassifier(n_estimators=200, max_depth=5, learning_rate=0.05, subsample=0.85,
+                               colsample_bytree=0.85, random_state=42, eval_metric="mlogloss")
+        clases = sorted(train["y"].astype(int).unique())
+        idx = {c: i for i, c in enumerate(clases)}
+        modelo.fit(X(train), train["y"].astype(int).map(idx))
+        predecir = lambda d: np.array(clases)[modelo.predict(X(d))]
+        probas = lambda d: modelo.predict_proba(X(d)).max(axis=1)
+        m_test = metricas_clasificacion(test["y"].astype(int), predecir(test))
+        nombre = NOMBRE_MODELO
+    else:
+        logger.warning("Una sola clase en el entrenamiento: se usa la persistencia como pronóstico")
+        predecir = lambda d: d["riesgo_obs"].astype(int).to_numpy()
+        probas = lambda d: np.full(len(d), np.nan)
+        m_test, nombre = base_test, NOMBRE_BASE
 
-    model.fit(X_train, y_train)
-    pred_test = model.predict(X_test)
-
-    inv_label_map = {v: k for k, v in label_map.items()}
-    labels_present = sorted(set(y_test.tolist()) | set(pred_test.tolist()))
     metrics = {
-        "f1_weighted": float(f1_score(y_test, pred_test, average="weighted")),
-        "report": classification_report(
-            y_test,
-            pred_test,
-            labels=labels_present,
-            target_names=[inv_label_map[label] for label in labels_present],
-            output_dict=True,
-            zero_division=0,
-        ),
-        "n_train": int(len(X_train)),
-        "n_test":  int(len(X_test)),
+        "evaluacion": f"Fuera de muestra: últimos {MESES_PRUEBA} meses con objetivo conocido; el modelo predice el riesgo del mes siguiente",
+        "tipo": "pronostico_mes_siguiente",
+        "f1_weighted": m_test["f1_ponderado"], "exactitud": m_test["exactitud"], "n_test": m_test["n"], "n_train": int(len(train)),
+        "linea_base": {"descripcion": "el mes siguiente repite el nivel de riesgo actual (persistencia)", **base_test},
+        "distribucion_y_test": {ETIQUETAS[int(k)]: int(v) for k, v in test["y"].astype(int).value_counts().items()},
+        "nota_etiqueta": "El riesgo se define con un índice por reglas (no hay etiquetas históricas validadas por expertos)",
+        "n_features": len(FEATURES),
     }
-    logger.info("Modelo %s — F1 ponderado: %.4f", model_name, metrics["f1_weighted"])
+    logger.info("Alertas %s | F1=%.3f (persistencia %.3f) sobre %s filas de prueba",
+                nombre, m_test["f1_ponderado"], base_test["f1_ponderado"], m_test["n"])
+    id_version = _registrar_version(engine, nombre, metrics)
 
-    # ── Registrar versión en model_version ───────────────────────────────────
-    id_version = _registrar_version(engine, model_name, metrics)
+    # Historial fuera de muestra (activa=False) + pronóstico vigente del mes siguiente al último mes con datos (activa=True)
+    tiempos = pd.read_sql("SELECT id_tiempo, anio, mes FROM dim_tiempo", engine)
+    ult = df[df["periodo"] == df["periodo"].max()].copy()
+    ult["periodo"] += 1                                   # el pronóstico vigente es del mes siguiente
+    ult["anio_obj"], ult["mes_obj"] = (ult["periodo"] - 1) // 12, (ult["periodo"] - 1) % 12 + 1
+    ult = ult.merge(tiempos, left_on=["anio_obj", "mes_obj"], right_on=["anio", "mes"], how="inner", suffixes=("_obs", ""))
+    historial = test.copy()
 
-    # ── Generar predicciones para todos los registros ────────────────────────
-    pred_todas = model.predict(X)
-    score_todas = model.predict_proba(X)
+    def _armar(d, activa, id_t):
+        pred = predecir(d)
+        p = probas(d)
+        out = pd.DataFrame({
+            "id_municipio": d["id_municipio"].to_numpy(),
+            "id_tiempo": id_t,
+            "nivel_riesgo": [ETIQUETAS[int(c)] for c in pred],
+            "tipo_evento": [_clasificar_tipo_evento(r) for r in d.to_dict("records")],
+            "score_probabilidad": p,
+            "activa": activa,
+            "id_version": id_version,
+        })
+        out["descripcion_generada"] = [
+            f"Riesgo previsto {r.nivel_riesgo} para el mes siguiente"
+            + ("" if np.isnan(r.score_probabilidad) else f" (probabilidad {r.score_probabilidad:.0%})")
+            + f". Condición del último mes observado: {r.tipo_evento}."
+            for r in out.itertuples()
+        ]
+        return out
 
-    df_pred = df[["id_municipio", "id_tiempo"]].copy()
-    df_pred["nivel_riesgo"]      = [inv_label_map[p] for p in pred_todas]
-    df_pred["tipo_evento"]       = df.apply(_clasificar_tipo_evento, axis=1).values
-    df_pred["score_probabilidad"] = score_todas.max(axis=1)
-    df_pred["descripcion_generada"] = df_pred.apply(
-        lambda r: (
-            f"Alerta {r['nivel_riesgo']} — {r['tipo_evento']}. "
-            f"Probabilidad estimada: {r['score_probabilidad']:.0%}."
-        ),
-        axis=1,
-    )
-    df_pred["activa"]     = True
-    df_pred["id_version"] = id_version
+    partes = [_armar(historial, False, historial["id_tiempo"].to_numpy())]     # id_tiempo = mes observado
+    if not ult.empty:
+        partes.append(_armar(ult, True, ult["id_tiempo"].to_numpy()))          # id_tiempo = mes previsto
+    pred_all = pd.concat(partes, ignore_index=True)
+    # Si un municipio-mes aparece en ambos grupos, gana el pronóstico vigente
+    pred_all = pred_all.sort_values("activa").drop_duplicates(subset=["id_municipio", "id_tiempo"], keep="last")
+    _guardar_predicciones(engine, pred_all)
 
-    _guardar_predicciones(engine, df_pred)
-
-    return {"model_name": model_name, "metrics": metrics, "n_predicciones": len(df_pred)}
-
-
-# ── Helpers BD ───────────────────────────────────────────────────────────────
-
-def _registrar_version(engine, model_name: str, metrics: dict) -> int | None:
-    from sqlalchemy import text
-    # Desactivar versiones anteriores del mismo modelo
-    with engine.begin() as conn:
-        conn.execute(
-            text("UPDATE model_version SET activo = FALSE WHERE nombre_modelo = :nm"),
-            {"nm": model_name},
-        )
-    with engine.begin() as conn:
-        from sqlalchemy import text as sqltext
-        result = conn.execute(
-            sqltext(
-                "INSERT INTO model_version (nombre_modelo, fecha_entrenamiento, metricas_json, activo) "
-                "VALUES (:nombre_modelo, :fecha_entrenamiento, :metricas_json, :activo) "
-                "RETURNING id_version"
-            ),
-            {
-                "nombre_modelo": model_name,
-                "fecha_entrenamiento": datetime.utcnow().isoformat(),
-                "metricas_json": json.dumps(metrics, ensure_ascii=False),
-                "activo": True,
-            },
-        )
-        row = result.fetchone()
-    id_version = int(row[0]) if row else None
-    logger.info("model_version registrado: %s (id=%s)", model_name, id_version)
-    return id_version
+    return {"model_name": nombre, "metrics": metrics, "n_predicciones": int(len(pred_all))}
 
 
-def _guardar_predicciones(engine, df_pred: pd.DataFrame) -> None:
-    from load.db import upsert
-    cols = [
-        "id_municipio", "id_tiempo", "nivel_riesgo",
-        "tipo_evento", "score_probabilidad",
-        "descripcion_generada", "activa", "id_version",
-    ]
-    df_out = df_pred[cols].drop_duplicates(subset=["id_municipio", "id_tiempo"])
-    upsert(engine, "pred_alerta_climatica", df_out, ["id_municipio", "id_tiempo"])
-    logger.info("pred_alerta_climatica: %s predicciones guardadas", len(df_out))
-
-
-# ── Entry point ───────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
     result = train_and_report()
-    print(json.dumps(
-        {k: v for k, v in result.items() if k != "metrics"},
-        indent=2, ensure_ascii=False,
-    ))
-    print(f"\nF1 ponderado: {result['metrics']['f1_weighted']:.4f}")
+    print(json.dumps({k: v for k, v in result.items() if k != "metrics"}, indent=2, ensure_ascii=False))
+    print(f"\nF1 ponderado (fuera de muestra): {result['metrics']['f1_weighted']:.4f}")
