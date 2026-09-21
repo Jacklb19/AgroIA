@@ -1,4 +1,8 @@
 import pool from "@/lib/db";
+import { NOTA_REGLAS, ajusteEscenario } from "@/lib/reglas";
+import { log } from "@/lib/log";
+
+export const dynamic = "force-dynamic";
 
 /* Heurística agronómica simple alimentada por datos reales de la BD.
    - Ventana óptima: mes con mayor lluvia mensual histórica (ajustada por ENSO).
@@ -85,14 +89,12 @@ export async function POST(request) {
     alertasAlto     = alertas.rows[0]?.n || 0;
     rendimientoBase = rend.rows[0]?.yhat != null ? parseFloat(rend.rows[0].yhat) : null;
   } catch (err) {
-    console.error("[recomendacion] DB error:", err.message);
+    log("error", "recomendacion", { mensaje: err.message, codigo: err.code });
   }
 
   const ventana = ventanaPorCultivo(cultivo, enso);
   const fert    = dosisFertilizante(aptitud, prob_deficit);
-  const ensoAdj = enso === "El Niño" ? -0.5 : enso === "La Niña" ? 0.3 : 0;
-  const lluviaAdj = lluvia === "Déficit" ? -0.4 : lluvia === "Exceso" ? -0.2 : 0;
-  const proyectado = rendimientoBase != null ? +(rendimientoBase + ensoAdj + lluviaAdj).toFixed(2) : null;
+  const proyectado = rendimientoBase != null ? +(rendimientoBase + ajusteEscenario(enso, lluvia, rendimientoBase)).toFixed(2) : null;
 
   const recomendaciones = [
     {
@@ -132,6 +134,8 @@ export async function POST(request) {
   ];
 
   return Response.json({
+    tipo: "regla_orientativa",
+    aviso: `${NOTA_REGLAS} Las ventanas de siembra y dosis de nitrógeno son valores de referencia generales, no una prescripción: consulta a un asistente técnico agropecuario antes de aplicarlas.`,
     municipio:           nombreMuni,
     cultivo,
     escenario:           { enso, lluvia },

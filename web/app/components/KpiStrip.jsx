@@ -1,48 +1,54 @@
 "use client";
 import { Icon } from "./icons";
-import KpiSpark from "./charts/KpiSpark";
+import { useApi } from "@/lib/useApi";
+import { ErrorState } from "./ui/Estados";
+import DataStamp from "./ui/DataStamp";
 
+const fmt = (n) => (n == null ? "—" : Number(n).toLocaleString("es-CO"));
+
+/* KPIs reales desde /api/impacto. Sin tendencias ni variaciones inventadas: cada tarjeta muestra
+   solo lo que la base de datos puede respaldar. */
 export default function KpiStrip() {
+  const api = useApi("/api/impacto");
+  const d = api.data;
+  const cargando = api.status === "loading" && !d;
+
+  if (api.status === "error") {
+    return <div className="container"><ErrorState texto="Los indicadores no están disponibles en este momento." onReintentar={api.recargar} /></div>;
+  }
+
+  const valor = (v) => (cargando ? <span className="skel" style={{ display: "inline-block", width: 90, height: 34 }} /> : fmt(v));
+  const periodo = d?.produccion_desde && d?.produccion_hasta ? `Producción ${d.produccion_desde}–${d.produccion_hasta}` : "Sin producción cargada";
+
   return (
     <div className="container">
       <div className="kpi-grid">
         <div className="kpi-card">
-          <div className="kpi-meta">
-            <div className="kpi-icon"><Icon.map /></div>
-            <KpiSpark data={[1080, 1090, 1098, 1105, 1112, 1118, 1122]} />
-          </div>
-          <div className="kpi-num">1.122</div>
-          <div className="kpi-lbl">Municipios cubiertos</div>
-          <div className="kpi-delta">↗ +18 este año</div>
+          <div className="kpi-meta"><div className="kpi-icon"><Icon.map /></div></div>
+          <div className="kpi-num">{valor(d?.municipios_cubiertos)}</div>
+          <div className="kpi-lbl">Municipios con producción registrada</div>
+          <div className="kpi-sub">{cargando ? "" : periodo}</div>
         </div>
         <div className="kpi-card amber">
-          <div className="kpi-meta">
-            <div className="kpi-icon"><Icon.layers /></div>
-            <KpiSpark data={[78, 80, 82, 83, 85, 86, 87]} color="#d97706" />
-          </div>
-          <div className="kpi-num">87</div>
-          <div className="kpi-lbl">Cultivos modelados</div>
-          <div className="kpi-delta">↗ +5 vs. 2025</div>
+          <div className="kpi-meta"><div className="kpi-icon"><Icon.layers /></div></div>
+          <div className="kpi-num">{valor(d?.cultivos_monitoreados)}</div>
+          <div className="kpi-lbl">Cultivos con producción registrada</div>
+          <div className="kpi-sub">{cargando ? "" : `${fmt(d?.hectareas_cobertura)} ha sembradas acumuladas`}</div>
         </div>
         <div className="kpi-card blue">
-          <div className="kpi-meta">
-            <div className="kpi-icon"><Icon.cpu /></div>
-            <KpiSpark data={[28, 30, 33, 35, 38, 41, 42.8]} color="#1e4d7b" />
-          </div>
-          <div className="kpi-num">42.8k</div>
-          <div className="kpi-lbl">Predicciones generadas</div>
-          <div className="kpi-delta">↗ +34% trimestre</div>
+          <div className="kpi-meta"><div className="kpi-icon"><Icon.cpu /></div></div>
+          <div className="kpi-num">{valor(d?.predicciones_total)}</div>
+          <div className="kpi-lbl">Predicciones de rendimiento</div>
+          <div className="kpi-sub">{cargando ? "" : d?.modelo_actualizado ? `Modelo entrenado el ${d.modelo_actualizado}` : "Aún sin modelo entrenado"}</div>
         </div>
         <div className="kpi-card red">
-          <div className="kpi-meta">
-            <div className="kpi-icon"><Icon.alert /></div>
-            <KpiSpark data={[180, 185, 192, 198, 205, 210, 214]} color="#dc2626" />
-          </div>
-          <div className="kpi-num">214</div>
+          <div className="kpi-meta"><div className="kpi-icon"><Icon.alert /></div></div>
+          <div className="kpi-num">{valor(d?.alertas_activas)}</div>
           <div className="kpi-lbl">Alertas activas</div>
-          <div className="kpi-delta">↗ +12 últimas 24h</div>
+          <div className="kpi-sub">{cargando ? "" : `${fmt(d?.alertas_alto_riesgo)} de riesgo alto`}</div>
         </div>
       </div>
+      <DataStamp fuente="fact_produccion_agricola · pred_rendimiento · pred_alerta_climatica" nota="calculado en tiempo real" />
     </div>
   );
 }

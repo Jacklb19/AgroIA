@@ -20,6 +20,36 @@ def _normalizar_nombre(valor: str) -> str:
     valor = "".join(c for c in valor if unicodedata.category(c) != "Mn")
     return " ".join(valor.split())
 
+COLUMNAS_PRODUCCION = ["area_sembrada_ha", "area_cosechada_ha", "produccion_total_ton"]
+
+
+def agregar_produccion_anual(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    La fuente trae varias filas por (municipio, cultivo, año): ciclos/semestres y variedades.
+    Se agregan así:
+      - área sembrada, área cosechada y producción: SUMA (min_count=1: si todas faltan, queda NaN, no 0);
+      - rendimiento: se RECALCULA como producción / área cosechada. Antes se sumaban los rendimientos
+        de las filas duplicadas, lo que infla t/ha. Si no hay área cosechada > 0 se usa el promedio
+        de los rendimientos originales, y si tampoco existe queda NaN.
+    Un dato ausente NO se convierte en 0.
+    """
+    llaves = ["id_municipio", "id_cultivo", "id_tiempo"]
+    df = df.dropna(subset=llaves).copy()
+    for col in COLUMNAS_PRODUCCION + ["rendimiento_t_ha"]:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    agg = df.groupby(llaves, as_index=False).agg(
+        area_sembrada_ha=("area_sembrada_ha", lambda s: s.sum(min_count=1)),
+        area_cosechada_ha=("area_cosechada_ha", lambda s: s.sum(min_count=1)),
+        produccion_total_ton=("produccion_total_ton", lambda s: s.sum(min_count=1)),
+        rendimiento_medio=("rendimiento_t_ha", "mean"),
+    )
+    calculado = agg["produccion_total_ton"] / agg["area_cosechada_ha"].where(agg["area_cosechada_ha"] > 0)
+    agg["rendimiento_t_ha"] = calculado.fillna(agg["rendimiento_medio"])
+    agg["fuente_origen"] = "MinAgricultura EVA (datos.gov.co uejq-wxrr)"
+    return agg.drop(columns=["rendimiento_medio"])
+
+
 def load_all_facts(engine, df_produccion: pd.DataFrame, df_boletines: pd.DataFrame):
     """
     Carga los hechos históricos en la base de datos.
@@ -32,32 +62,15 @@ def load_all_facts(engine, df_produccion: pd.DataFrame, df_boletines: pd.DataFra
     dim_tiempo_db = pd.read_sql("SELECT id_tiempo, anio FROM dim_tiempo WHERE mes = 12", engine)
     
     # 2. Unir df_produccion con dim_cultivo y dim_tiempo
+    df_produccion = df_produccion.dropna(subset=["anio"]).copy()
     df_produccion["nombre_normalizado"] = df_produccion["cultivo"].astype(str).apply(_normalizar_nombre)
     df_produccion["anio"] = df_produccion["anio"].astype(int)
     
     df_merged = df_produccion.merge(dim_cultivo_db, on="nombre_normalizado", how="inner")
     df_merged = df_merged.merge(dim_tiempo_db, on="anio", how="inner")
-    
-    # 3. Preparar el DataFrame para la tabla de hechos
-    fact_cols = {
-        "id_municipio": df_merged["id_municipio"],
-        "id_cultivo": df_merged["id_cultivo"],
-        "id_tiempo": df_merged["id_tiempo"],
-        "area_sembrada_ha": df_merged["area_sembrada_ha"],
-        "area_cosechada_ha": df_merged["area_cosechada_ha"],
-        "produccion_total_ton": df_merged["produccion_total_ton"],
-        "rendimiento_t_ha": df_merged["rendimiento_t_ha"],
-        "fuente_origen": "MinAgricultura EVA 2019-2024"
-    }
-    df_fact = pd.DataFrame(fact_cols)
-    
-    # Limpiar nulos y asegurar tipos correctos
-    df_fact = df_fact.dropna(subset=["id_municipio", "id_cultivo", "id_tiempo"])
-    for col in ["area_sembrada_ha", "area_cosechada_ha", "produccion_total_ton", "rendimiento_t_ha"]:
-        df_fact[col] = pd.to_numeric(df_fact[col], errors='coerce').fillna(0)
-        
-    # Agrupar por llaves primarias en caso de duplicados en la fuente
-    df_fact = df_fact.groupby(["id_municipio", "id_cultivo", "id_tiempo", "fuente_origen"]).sum().reset_index()
+
+    # 3. Agregar a (municipio, cultivo, año) y preparar el hecho
+    df_fact = agregar_produccion_anual(df_merged)
 
     # 4. Upsert a fact_produccion_agricola
     upsert(engine, "fact_produccion_agricola", df_fact, ["id_municipio", "id_cultivo", "id_tiempo"])
@@ -163,7 +176,7 @@ def load_fact_alerta_enso(engine, df_boletines: pd.DataFrame):
         "id_tiempo",
         "id_region",
         "fase_enso",
-        "indice_spi",
+        "indice_oni",
         "fuente_origen",
         "es_sintetico",
     ]
@@ -248,10 +261,13 @@ def load_fact_aptitud_suelo(engine, df_suelo: pd.DataFrame):
     dim_cultivo_db = pd.read_sql("SELECT id_cultivo, nombre_normalizado FROM dim_cultivo", engine)
     df = df_suelo.copy()
     if "producto" in df.columns:
-        df["nombre_normalizado"] = df["producto"].astype(str).str.upper().str.strip()
+        df["nombre_normalizado"] = df["producto"].astype(str).map(_normalizar_nombre)   # sin tildes, como dim_cultivo
         df = df.merge(dim_cultivo_db, on="nombre_normalizado", how="left")
     if "id_cultivo" not in df.columns:
         df["id_cultivo"] = None
+    # Sin cultivo identificado la fila no sirve (y con id_cultivo NULL el UNIQUE no evita duplicados)
+    df = df.dropna(subset=["id_cultivo"]).copy()
+    df["id_cultivo"] = df["id_cultivo"].astype(int)
 
     cols = [
         "id_municipio",
@@ -289,6 +305,63 @@ def load_fact_aptitud_suelo(engine, df_suelo: pd.DataFrame):
     logger.info("fact_aptitud_suelo: %s registros cargados", len(df_fact))
 
 
+def fill_fact_clima_from_openmeteo(engine, df_openmeteo: pd.DataFrame) -> int:
+    """
+    Completa fact_clima_mensual con temperatura, humedad y brillo solar de Open-Meteo (ERA5).
+
+    Solo escribe donde la columna está vacía (COALESCE): nunca pisa lo medido por el IDEAM.
+    df_openmeteo: id_estacion, anio, mes, temperatura_media_c/max_c/min_c, humedad_relativa_pct,
+    brillo_solar_horas_dia (salida de extract_openmeteo_clima). Retorna las filas actualizadas.
+    """
+    from psycopg2.extras import execute_values
+
+    if df_openmeteo.empty:
+        logger.info("Sin datos de Open-Meteo para cargar")
+        return 0
+
+    dim_tiempo = pd.read_sql("SELECT id_tiempo, anio, mes FROM dim_tiempo", engine)
+    df = df_openmeteo.copy()
+    df["anio"] = pd.to_numeric(df["anio"], errors="coerce").astype("Int64")
+    df["mes"] = pd.to_numeric(df["mes"], errors="coerce").astype("Int64")
+    df = df.merge(dim_tiempo, on=["anio", "mes"], how="inner")
+    if df.empty:
+        logger.warning("Open-Meteo: ningún periodo coincide con dim_tiempo")
+        return 0
+
+    valores = [
+        "temperatura_media_c", "temperatura_max_c", "temperatura_min_c",
+        "humedad_relativa_pct", "brillo_solar_horas_dia",
+    ]
+    filas = [
+        (str(r.id_estacion), int(r.id_tiempo), *[None if pd.isna(getattr(r, c)) else float(getattr(r, c)) for c in valores])
+        for r in df.itertuples(index=False)
+    ]
+    sql = """
+        UPDATE fact_clima_mensual f SET
+            temperatura_media_c    = COALESCE(f.temperatura_media_c,    v.tmed),
+            temperatura_max_c      = COALESCE(f.temperatura_max_c,      v.tmax),
+            temperatura_min_c      = COALESCE(f.temperatura_min_c,      v.tmin),
+            humedad_relativa_pct   = COALESCE(f.humedad_relativa_pct,   v.hum),
+            brillo_solar_horas_dia = COALESCE(f.brillo_solar_horas_dia, v.sol)
+        FROM (VALUES %s) AS v(id_estacion, id_tiempo, tmed, tmax, tmin, hum, sol)
+        WHERE f.id_estacion = v.id_estacion AND f.id_tiempo = v.id_tiempo
+        RETURNING 1
+    """
+    plantilla = "(%s, %s::int, %s::float8, %s::float8, %s::float8, %s::float8, %s::float8)"
+    raw = engine.raw_connection()
+    try:
+        with raw.cursor() as cur:
+            devueltas = execute_values(cur, sql, filas, template=plantilla, page_size=5000, fetch=True)
+        raw.commit()
+    except Exception:
+        raw.rollback()
+        raise
+    finally:
+        raw.close()
+    logger.info("fact_clima_mensual: %s filas completadas con Open-Meteo", len(devueltas))
+    return len(devueltas)
+
+
 def load_fact_censo_agropecuario(engine, df_censo: pd.DataFrame):
     from .db import upsert
 
@@ -301,8 +374,10 @@ def load_fact_censo_agropecuario(engine, df_censo: pd.DataFrame):
     cols = [
         "id_municipio",
         "anio_censo",
-        "area_cultivos_permanentes_ha",
-        "area_cultivos_transitorios_ha",
+        "area_pastos_ha",
+        "area_rastrojo_ha",
+        "area_agricola_ha",
+        "area_infraestructura_ha",
     ]
     for col in cols:
         if col not in df.columns:

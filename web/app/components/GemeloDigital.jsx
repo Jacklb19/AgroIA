@@ -27,7 +27,7 @@ export default function GemeloDigital({ muni, cultivo }) {
         }),
       })
         .then((r) => r.json())
-        .then((d) => setData(d))
+        .then((d) => setData(d && d.baseline != null ? d : null))   // 404/503: no hay línea base, no se simula
         .catch(() => setData(null))
         .finally(() => setLoading(false));
     }, DEBOUNCE);
@@ -48,10 +48,10 @@ export default function GemeloDigital({ muni, cultivo }) {
     <div className="card" style={{ marginTop: 22 }}>
       <div className="card-head">
         <div>
-          <h3>🔬 Gemelo digital · simulador de escenarios</h3>
-          <p>Mueve los sliders para simular cambios climáticos y de manejo. La proyección se recalcula en vivo sobre la línea base XGBoost.</p>
+          <h3>🔬 Simulador de escenarios · regla orientativa</h3>
+          <p>Mueve los sliders para explorar cambios climáticos y de manejo sobre la línea base del modelo. Es una estimación con reglas fijas de referencia, no una salida del modelo.</p>
         </div>
-        <span className="src-badge">/api/simular</span>
+        <span className="src-badge">línea base: pred_rendimiento</span>
       </div>
       <div className="card-body">
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 18 }}>
@@ -144,6 +144,11 @@ export default function GemeloDigital({ muni, cultivo }) {
             </div>
             {loading && <div style={{ fontSize: 11, color: "var(--gray-500)", marginTop: 6 }}>Recalculando…</div>}
           </div>
+        )}
+        {!data && !loading && (
+          <p style={{ marginTop: 18, fontSize: 13, color: "var(--gray-600)" }}>
+            No hay línea base del modelo para esta combinación de municipio y cultivo, por eso no se puede simular.
+          </p>
         )}
       </div>
     </div>

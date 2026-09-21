@@ -176,6 +176,9 @@ scratch/
 *.xlsx
 *.xls
 
+# Excepción: catálogos pequeños de configuración (sinónimos de municipios, etc.)
+!config/*.csv
+
 # Imágenes generadas por scripts
 *.png
 *.jpg
@@ -193,9 +196,13 @@ web/.next/
 web/node_modules/
 web/out/
 
-# Secrets
+# Secrets (.env.example SÍ se versiona: solo tiene marcadores de posición)
 .env
-.env.example
+.env.local
+!.env.example
 AgroIA_Informe_Diseno_Web.docx
 .claude
 venv
+# iconos de la app (Next los recoge por convencion)
+!web/app/icon.svg
+!web/app/opengraph-image.png

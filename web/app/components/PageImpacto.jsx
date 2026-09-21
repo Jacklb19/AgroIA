@@ -82,7 +82,7 @@ export default function PageImpacto({ onNav }) {
             <div className="impact-card green-light">
               <div className="icon-wrap"><Icon.users /></div>
               <h3>Productores potenciales</h3>
-              <p>Estimado a partir del Censo Nacional Agropecuario y promedio de hectáreas por unidad productiva agropecuaria.</p>
+              <p>Requiere el número de unidades productivas del Censo Nacional Agropecuario por municipio, que todavía no está cargado en el sistema: por eso no se muestra una cifra estimada.</p>
               <div className="impact-stat-row">
                 <div className="impact-stat">{fmtNumber(productores)}</div>
                 <div className="impact-stat-label">Beneficiarios<br />potenciales</div>
@@ -92,9 +92,9 @@ export default function PageImpacto({ onNav }) {
 
           <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 22, color: "var(--gray-600)", fontSize: 13 }}>
             <span>📡 Alertas de alto riesgo activas: <strong>{fmtNumber(altoRiesgo)}</strong></span>
-            <span>📈 Rendimiento promedio nacional predicho: <strong>{rendProm != null ? `${rendProm} t/ha` : "—"}</strong></span>
-            {stats?.fromDB === false && (
-              <span style={{ color: "#d97706" }}>⚠ Cifras de respaldo · BD no disponible</span>
+            <span>📈 Rendimiento predicho promedio (todos los cultivos mezclados): <strong>{rendProm != null ? `${rendProm} t/ha` : "—"}</strong></span>
+            {stats && stats.fromDB === false && (
+              <span style={{ color: "#d97706" }}>⚠ Datos no disponibles en este momento</span>
             )}
           </div>
         </div>
@@ -136,12 +136,12 @@ export default function PageImpacto({ onNav }) {
               <ul style={{ fontSize: 13, color: "var(--gray-700)", marginTop: 8, paddingLeft: 18 }}>
                 <li>Supabase (PostgreSQL + Auth) — <strong>USD 0–25</strong></li>
                 <li>Vercel (Next.js) — <strong>USD 0–20</strong></li>
-                <li>Groq (Llama 3.3 70B) — <strong>USD 0</strong> en free tier</li>
-                <li>GitHub Actions cron ETL — <strong>USD 0</strong> (2k min/mes)</li>
+                <li>Anthropic API (asistente Claude) — <strong>pago por uso</strong>, con tope diario</li>
+                <li>Railway (cron del ETL y de precios) — <strong>según uso</strong></li>
               </ul>
               <div className="impact-stat-row">
-                <div className="impact-stat">≤ USD 45</div>
-                <div className="impact-stat-label">Costo mensual<br />fase MVP</div>
+                <div className="impact-stat">Estimado</div>
+                <div className="impact-stat-label">Costo mensual<br />fase MVP (variable)</div>
               </div>
             </div>
 
@@ -163,7 +163,7 @@ export default function PageImpacto({ onNav }) {
               <p>Pipeline reproducible, datos abiertos como única fuente y código en GitHub aseguran que el proyecto sobreviva al equipo original.</p>
               <ul style={{ fontSize: 13, color: "var(--gray-700)", marginTop: 8, paddingLeft: 18 }}>
                 <li>Pipeline ETL totalmente automatizado</li>
-                <li>Schema versionado en <code>load/schema.sql</code></li>
+                <li>Migraciones versionadas en <code>migrations/</code></li>
                 <li>Modelos entrenables con un comando</li>
                 <li>Documentación de reproducción en README</li>
               </ul>
@@ -183,7 +183,7 @@ export default function PageImpacto({ onNav }) {
             {[
               { n: "01", txt: <>Presenta el <strong>problema público</strong> del sector agropecuario colombiano en planificación y riesgo, y abre con los KPIs del Inicio.</>, tag: "Contexto",  page: "inicio",      cta: "Ir a Inicio →" },
               { n: "02", txt: <>Muestra la integración de <strong>datos abiertos</strong>: catálogo Socrata, Hoja de Ruta Sectorial Agropecuaria y trazabilidad por dataset.</>, tag: "Datos",     page: "metodologia", cta: "Ver catálogo →" },
-              { n: "03", txt: <>Navega los <strong>dashboards</strong>: panorama ejecutivo, real vs. predicho, semáforo, alertas y anomalías. Activa el modo offline si es necesario.</>, tag: "Analítica", page: "dashboards",  cta: "Abrir dashboards →" },
+              { n: "03", txt: <>Navega los <strong>dashboards</strong>: panorama ejecutivo, real vs. predicho, semáforo, alertas y anomalías. El resumen en vivo aparece primero y Power BI debajo.</>, tag: "Analítica", page: "dashboards",  cta: "Abrir dashboards →" },
               { n: "04", txt: <>Ejecuta una <strong>predicción puntual</strong>, muestra el panel SHAP con los 3 factores y la <strong>recomendación accionable</strong>.</>, tag: "Producto",  page: "prediccion",  cta: "Probar predicción →", amber: true },
               { n: "05", txt: <>Pregúntale al <strong>asistente</strong> por voz: "compara Espinal y Saldaña" o "qué pasa si hay El Niño en Pasto".</>, tag: "Agente IA", page: "asistente",    cta: "Hablar con AgroIA →", amber: true },
               { n: "06", txt: <>Cierra con <strong>aliados objetivo</strong>, <strong>impacto medible</strong> y plan de sostenibilidad económica.</>, tag: "Cierre",    page: null,           cta: null,                    amber: true },

@@ -1,6 +1,8 @@
 import fs from "fs/promises";
 import path from "path";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   try {
     const csvPath = path.resolve(process.cwd(), "..", "data", "quality_reports", "anova_resumen.csv");

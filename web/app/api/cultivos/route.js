@@ -1,18 +1,19 @@
 import pool from "@/lib/db";
+import { CACHE_1H, errorBD } from "@/lib/api";
 
+export const dynamic = "force-dynamic";
+
+/* Cultivos con producción registrada. (dim_cultivo también contiene productos de precios SIPSA.) */
 export async function GET() {
   try {
     const { rows } = await pool.query(`
-      SELECT DISTINCT nombre_cultivo
-      FROM dim_cultivo
-      ORDER BY nombre_cultivo
+      SELECT DISTINCT c.nombre_cultivo
+      FROM dim_cultivo c
+      WHERE EXISTS (SELECT 1 FROM fact_produccion_agricola fp WHERE fp.id_cultivo = c.id_cultivo)
+      ORDER BY c.nombre_cultivo
     `);
-    const list = rows.map((r) => r.nombre_cultivo);
-    return Response.json(list);
+    return Response.json(rows.map((r) => r.nombre_cultivo), { headers: CACHE_1H });
   } catch (err) {
-    return Response.json(
-      ["Maíz tecnificado","Arroz riego","Café arábica","Caña panelera","Plátano","Papa Diacol","Aguacate Hass"],
-      { status: 200 }
-    );
+    return errorBD("cultivos", err);
   }
 }

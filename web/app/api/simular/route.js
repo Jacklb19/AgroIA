@@ -1,32 +1,34 @@
 import pool from "@/lib/db";
+import { errorBD, sinDatos } from "@/lib/api";
+import { AJUSTE_ENSO_PCT } from "@/lib/reglas";
 
-/* Gemelo digital simple: aplica perturbaciones a la línea base predicha
-   por XGBoost. No reentrena el modelo — usa elasticidades agronómicas
-   típicas (lluvia, temperatura, ENSO, fertilización, suelo). */
+export const dynamic = "force-dynamic";
 
+/* "Gemelo digital" orientativo: aplica perturbaciones a la línea base predicha por el modelo.
+   NO reentrena ni consulta el modelo: las elasticidades son reglas fijas de referencia (ver lib/reglas.js)
+   y así se rotulan en la respuesta. Sin línea base en la BD no se devuelve nada (antes se usaba 4,4 t/ha). */
 const ELASTICIDADES = {
-  lluvia_pct:     0.012,   // +1% lluvia ≈ +0.012 t/ha (rango ±30%)
-  temp_delta_c:  -0.18,    // +1°C ≈ -0.18 t/ha (estrés térmico)
-  enso: { "El Niño": -0.5, "La Niña": 0.3, "Neutral": 0 },
-  fertilizante_pct: 0.008, // +1% dosis ≈ +0.008 t/ha (con saturación)
-  aptitud:    { alta: 0.4, moderada: 0.0, marginal: -0.4, no_apta: -0.9 },
+  lluvia_pct:       0.012,   // +1 % lluvia ≈ +0,012 t/ha por cada t/ha de base (rango ±30 %)
+  temp_delta_c:    -0.18,    // +1 °C ≈ -0,18 t/ha (estrés térmico)
+  fertilizante_pct: 0.008,   // +1 % dosis ≈ +0,008 t/ha (con saturación)
+  aptitud: { alta: 0.4, moderada: 0.0, marginal: -0.4, no_apta: -0.9 },
 };
 
 export async function POST(request) {
-  const body = await request.json();
-  const {
-    muni       = "",
-    cultivo    = "",
-    lluvia_pct       = 0,
-    temp_delta_c     = 0,
-    enso             = "Neutral",
-    fertilizante_pct = 0,
-  } = body;
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json({ error: "El cuerpo debe ser JSON válido." }, { status: 400 });
+  }
+  const { muni = "", cultivo = "", lluvia_pct = 0, temp_delta_c = 0, enso = "Neutral", fertilizante_pct = 0 } = body ?? {};
+  if (typeof muni !== "string" || typeof cultivo !== "string" || !muni.trim() || !cultivo.trim()) {
+    return Response.json({ error: "Indica 'muni' y 'cultivo'." }, { status: 400 });
+  }
 
-  const nombreMuni = (muni || "").split(",")[0].trim();
-
+  const nombreMuni = muni.split(",")[0].trim();
   let baseline = null;
-  let aptitud  = null;
+  let aptitud = null;
   try {
     const [rend, apt] = await Promise.all([
       pool.query(`
@@ -48,13 +50,15 @@ export async function POST(request) {
     baseline = rend.rows[0]?.yhat != null ? parseFloat(rend.rows[0].yhat) : null;
     aptitud  = apt.rows[0]?.clase_aptitud || null;
   } catch (err) {
-    console.error("[simular]", err.message);
+    return errorBD("simular", err);
   }
 
-  const base       = baseline ?? 4.4;
-  const lluviaImp  = ELASTICIDADES.lluvia_pct       * Number(lluvia_pct || 0)       * base;
-  const tempImp    = ELASTICIDADES.temp_delta_c     * Number(temp_delta_c || 0);
-  const ensoImp    = ELASTICIDADES.enso[enso] ?? 0;
+  if (baseline == null) return sinDatos("No hay línea base del modelo para esa combinación de municipio y cultivo.");
+
+  const base       = baseline;
+  const lluviaImp  = ELASTICIDADES.lluvia_pct * Number(lluvia_pct || 0) * base;
+  const tempImp    = ELASTICIDADES.temp_delta_c * Number(temp_delta_c || 0);
+  const ensoImp    = base * (AJUSTE_ENSO_PCT[enso] ?? 0);      // proporcional al rendimiento
   const fertImp    = Math.tanh(Number(fertilizante_pct || 0) / 100) * ELASTICIDADES.fertilizante_pct * 100; // saturante
   const aptImp     = aptitud ? (ELASTICIDADES.aptitud[aptitud] || 0) : 0;
 
@@ -62,6 +66,9 @@ export async function POST(request) {
   const delta      = +(proyectado - base).toFixed(2);
 
   return Response.json({
+    fromDB: true,
+    tipo: "regla_orientativa",
+    aviso: "Estimación con reglas fijas de referencia; no es una salida del modelo ni está calibrada con los datos del proyecto.",
     municipio:     nombreMuni,
     cultivo,
     baseline:      base,

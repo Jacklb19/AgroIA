@@ -1,4 +1,5 @@
 import pool from "@/lib/db";
+import { errorBD } from "@/lib/api";
 
 const OPENMETEO_URL = "https://api.open-meteo.com/v1/forecast";
 
@@ -82,7 +83,6 @@ export async function GET(request) {
     CACHE.set(cacheKey, { data, ts: Date.now() });
     return Response.json(data);
   } catch (err) {
-    console.error("[clima/actual]", err.message);
-    return Response.json({ error: err.message }, { status: 500 });
+    return errorBD("clima/actual", err);
   }
 }

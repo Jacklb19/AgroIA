@@ -1,4 +1,7 @@
 import pool from "@/lib/db";
+import { NOTA_REGLAS, ajusteEscenario } from "@/lib/reglas";
+import { permitirChat, validarChat } from "@/lib/rateLimit";
+import { conRegistro, log } from "@/lib/log";
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 /* ID del modelo configurable vía env. Por defecto Claude Sonnet 4.5 (estable y
@@ -27,9 +30,11 @@ Guía rápida — qué herramienta usar:
 - "compara A y B", "cuál es mejor entre X y Y" → comparar_municipios(municipios=[A,B])
 - "qué pasa si hay El Niño/La Niña", "escenario de sequía", "simulación" → proyectar_escenario(municipio, cultivo, enso, lluvia)
 - "qué sembrar en X", "qué cultivo me recomiendas" → recomendar_cultivo(municipio=X)
+- "a cómo está la papa en Pasto", "precio de X en Y", "cuánto cuesta" → consultar_precio(producto=X, lugar=Y)
 
 La base de datos contiene:
-- Predicciones XGBoost (R²=0.81, MAE=0.18 t/ha) por municipio y cultivo
+- Predicciones de rendimiento (modelo XGBoost) por municipio y cultivo. Para hablar de su calidad usa la herramienta info_modelo; NUNCA cites métricas de memoria
+- Precios mayoristas diarios (frutas, verduras, tubérculos y plátanos) por mercado y departamento
 - Alertas climáticas: sequía, exceso lluvia, plagas, volatilidad de mercado
 - Datos históricos de producción y clima mensual
 - Índices ENSO por período
@@ -55,9 +60,12 @@ Estructura cada respuesta así:
 
 Usa emojis con moderación para hacer la lectura más visual (🌱 cultivos, 🏔️ municipios, ☔ lluvia, 🌡️ temperatura, ⚠️ alertas, 📈 buen rendimiento, 📉 bajo rendimiento).
 
-CUANDO LA HERRAMIENTA FALLA O DEVUELVE DATOS VACÍOS:
-Responde usando tu conocimiento agrícola sobre Colombia. Usa el mismo formato (título con emoji, dato clave, contexto práctico, recomendación). Sé concreto: da cifras reales de producción colombiana, municipios conocidos, temporadas típicas.
-NUNCA menciones errores, problemas de base de datos ni que no tienes información. Siempre da una respuesta completa y útil.`;
+PRECIOS: nunca inventes ni estimes precios. Aclara siempre que son precios mayoristas por kilo (DANE-SIPSA), no de venta al consumidor, e indica la fecha del dato. Si consultar_precio no devuelve datos, di que no hay un precio mayorista reciente para esa combinación (no todos los mercados reportan todos los productos cada día) y ofrece consultar otro producto o mercado.
+
+ESCENARIOS: el ajuste de proyectar_escenario es una regla orientativa fija, no una salida del modelo; dilo así.
+
+CUANDO UNA HERRAMIENTA FALLA O DEVUELVE DATOS VACÍOS:
+Dilo con claridad y amabilidad: "No tengo ese dato en la base de datos de AgroIA en este momento". Puedes añadir orientación agronómica general, pero SIEMPRE etiquetada como "Conocimiento general (no proviene de la base de datos de AgroIA)", sin cifras exactas y sin nombrar municipios concretos como si fueran resultados. Nunca presentes como dato del sistema algo que no salió de una herramienta.`;
 
 /* Tools en formato Anthropic: { name, description, input_schema } */
 const TOOLS = [
@@ -136,6 +144,23 @@ const TOOLS = [
         lluvia:    { type: "string", enum: ["Normal", "Déficit", "Exceso"],    description: "Régimen de lluvias" },
       },
       required: ["municipio", "cultivo"],
+    },
+  },
+  {
+    name: "info_modelo",
+    description: "Métricas reales y fecha de entrenamiento de los modelos (rendimiento, alertas y precios). Úsala cuando pregunten qué tan confiable, preciso o bueno es el modelo, o cuál es su error.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "consultar_precio",
+    description: "Último precio mayorista (pesos por kilo) de un producto en un mercado, ciudad o departamento de Colombia, con variación diaria y semanal. Úsala cuando pregunten por precios, cuánto cuesta o a cómo está un producto. Solo hay frutas, verduras, tubérculos y plátanos.",
+    input_schema: {
+      type: "object",
+      properties: {
+        producto: { type: "string", description: "Producto, ej. papa criolla, tomate, plátano (puede ser parcial)" },
+        lugar:    { type: "string", description: "Departamento, ciudad o mercado, ej. Nariño, Pasto, Corabastos (opcional)" },
+      },
+      required: ["producto"],
     },
   },
   {
@@ -293,8 +318,6 @@ async function ejecutarHerramienta(name, args, intento = 0) {
       }
 
       case "proyectar_escenario": {
-        const ensoAdj   = args.enso   === "El Niño"  ? -0.5 : args.enso   === "La Niña" ? 0.3  : 0;
-        const lluviaAdj = args.lluvia === "Déficit"  ? -0.4 : args.lluvia === "Exceso"  ? -0.2 : 0;
         const { rows } = await pool.query(`
           SELECT m.nombre_municipio, c.nombre_cultivo,
                  ROUND(pr.rendimiento_predicho_t_ha::numeric, 2) AS rendimiento_base
@@ -308,8 +331,10 @@ async function ejecutarHerramienta(name, args, intento = 0) {
         `, [`%${args.municipio}%`, `%${args.cultivo}%`]);
         if (!rows.length) return { sin_datos: true, mensaje: "Sin línea base para esa combinación municipio-cultivo." };
         const base   = parseFloat(rows[0].rendimiento_base);
-        const ajuste = ensoAdj + lluviaAdj;
+        const ajuste = ajusteEscenario(args.enso, args.lluvia, base);   // regla orientativa proporcional (lib/reglas.js)
         return {
+          tipo:                "regla_orientativa",
+          aviso:               NOTA_REGLAS,
           municipio:           rows[0].nombre_municipio,
           cultivo:             rows[0].nombre_cultivo,
           escenario:           { enso: args.enso || "Neutral", lluvia: args.lluvia || "Normal" },
@@ -323,6 +348,47 @@ async function ejecutarHerramienta(name, args, intento = 0) {
               ? "El escenario reduce el rendimiento esperado; conviene tomar medidas preventivas."
               : "Escenario neutro: rendimiento esperado se mantiene en la línea base.",
         };
+      }
+
+      case "info_modelo": {
+        const { rows } = await pool.query(`
+          SELECT DISTINCT ON (nombre_modelo) nombre_modelo,
+                 to_char(fecha_entrenamiento, 'YYYY-MM-DD') AS entrenado, metricas_json AS m
+          FROM model_version WHERE activo ORDER BY nombre_modelo, id_version DESC
+        `);
+        if (!rows.length) return { sin_datos: true, mensaje: "Todavía no hay modelos entrenados registrados." };
+        const compacto = (m) => {
+          const j = typeof m === "string" ? JSON.parse(m) : (m || {});
+          const { r2, mae, rmse, n_train, n_test, split_year, f1_weighted, backtest } = j;
+          return { r2, mae_t_ha: mae, rmse_t_ha: rmse, n_entrenamiento: n_train, n_prueba: n_test, anio_corte: split_year, f1_ponderado: f1_weighted, backtest_precios: backtest && { error_modelo_log: backtest.mae_log_modelo, error_precio_hoy_log: backtest.mae_log_naive, mejora: backtest.mejora_global } };
+        };
+        return { modelos: rows.map((r) => ({ modelo: r.nombre_modelo, entrenado: r.entrenado, ...compacto(r.m) })) };
+      }
+
+      case "consultar_precio": {
+        const params = [`%${args.producto}%`];
+        let lugarSQL = "";
+        if (args.lugar) {
+          params.push(`%${args.lugar}%`);
+          lugarSQL = "AND (departamento ILIKE $2 OR ciudad ILIKE $2 OR mercado ILIKE $2)";
+        }
+        const { rows } = await pool.query(`
+          SELECT producto, mercado, departamento,
+                 to_char(fecha, 'YYYY-MM-DD') AS fecha,
+                 ROUND(precio_prom_kg::numeric, 0) AS precio_kg,
+                 ROUND(precio_min_kg::numeric, 0)  AS minimo_kg,
+                 ROUND(precio_max_kg::numeric, 0)  AS maximo_kg,
+                 ROUND(var_dia_pct::numeric, 1)    AS variacion_dia_pct,
+                 ROUND(var_7d_pct::numeric, 1)     AS variacion_7d_pct,
+                 dias_atraso
+          FROM v_precio_actual
+          WHERE producto ILIKE $1 ${lugarSQL} AND dias_atraso <= 30
+          ORDER BY dias_atraso, precio_prom_kg
+          LIMIT 10
+        `, params);
+        return rows.length
+          ? { precios: rows, unidad: "pesos colombianos por kilo, precio mayorista (DANE-SIPSA)" }
+          : { sin_datos: true, mensaje: "No hay un precio mayorista reciente (últimos 30 días) para esa combinación de producto y lugar." };
       }
 
       case "recomendar_cultivo": {
@@ -349,7 +415,7 @@ async function ejecutarHerramienta(name, args, intento = 0) {
         return { error: "Herramienta desconocida" };
     }
   } catch (err) {
-    console.error(`[chat:${name}] intento ${intento}:`, err.message);
+    log("error", "chat.herramienta_falla", { herramienta: name, intento, mensaje: err.message, codigo: err.code });
 
     /* Reintentar una vez si es error de conexión */
     const esErrorConexion = err.code === "ECONNRESET" || err.code === "ECONNREFUSED"
@@ -362,7 +428,8 @@ async function ejecutarHerramienta(name, args, intento = 0) {
       return ejecutarHerramienta(name, args, 1);
     }
 
-    return { error: err.message, code: err.code, detail: err.detail };
+    /* El detalle queda en el log del servidor; al modelo solo se le dice que la consulta falló. */
+    return { error: "La consulta a la base de datos falló en este momento." };
   }
 }
 
@@ -390,24 +457,39 @@ async function _persistMessage(sessionId, role, content, metadata = null) {
       [sessionId, role, typeof content === "string" ? content : JSON.stringify(content), metadata],
     );
   } catch (err) {
-    console.warn("[chat] persist failed:", err.message);
+    log("warn", "chat.no_se_guardo_mensaje", { mensaje: err.message });
   }
 }
 
-export async function POST(request) {
-  const { messages, sessionId } = await request.json();
+export const dynamic = "force-dynamic";
+
+async function manejarChat(request, _ctx, rid) {
+  let cuerpo;
+  try {
+    cuerpo = await request.json();
+  } catch {
+    return Response.json({ error: "El cuerpo debe ser JSON válido." }, { status: 400 });
+  }
+  const valido = validarChat(cuerpo);
+  if (!valido.ok) return Response.json({ error: valido.error }, { status: 400 });
+
+  /* Límite por IP y tope diario global: protege el gasto de la API key. */
+  const permiso = await permitirChat(request);
+  if (!permiso.ok) {
+    log("warn", "chat.limite", { request_id: rid, status: permiso.status });
+    return Response.json({ error: permiso.mensaje }, { status: permiso.status });
+  }
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return Response.json({ error: "ANTHROPIC_API_KEY no configurada" }, { status: 500 });
+  if (!apiKey) {
+    log("error", "chat.sin_api_key", { request_id: rid });
+    return Response.json({ error: "El asistente no está disponible en este momento." }, { status: 503 });
+  }
 
-  const sid = await _ensureSession(sessionId);
-
-  const chatMessages = messages
-    .filter((m) => m.role === "user" || m.role === "assistant")
-    .map((m) => ({ role: m.role, content: m.content }));
-
-  const lastUser = [...messages].reverse().find((m) => m.role === "user");
-  if (sid && lastUser) await _persistMessage(sid, "user", lastUser.content);
+  const sid = await _ensureSession(valido.sessionId);
+  const chatMessages = valido.messages;
+  const lastUser = chatMessages[chatMessages.length - 1];
+  if (sid) await _persistMessage(sid, "user", lastUser.content);
 
   /* Prompt caching: marcamos system prompt y la última tool como cacheables.
      Reduce ~90% el costo de input en llamadas dentro de 5 min. */
@@ -437,27 +519,16 @@ export async function POST(request) {
         max_tokens:  MAX_TOKENS,
         temperature: 0.2,
       }),
+      signal: AbortSignal.timeout(45_000),   // sin tiempo límite una respuesta colgada mantiene la función viva
     });
 
     if (!res.ok) {
+      /* El detalle (modelo, clave, mensaje del proveedor) queda solo en el log del servidor. */
       const errText = await res.text();
-      let parsed = null;
-      try { parsed = JSON.parse(errText); } catch {}
-      console.error("[chat:anthropic] HTTP", res.status, errText);
-      const detail = parsed?.error?.message || errText || `HTTP ${res.status}`;
+      log("error", "chat.anthropic", { request_id: rid, http: res.status, detalle: errText.slice(0, 500), modelo: MODEL });
       return Response.json(
-        {
-          error: `Error Anthropic ${res.status}: ${detail}`,
-          model_intentado: MODEL,
-          hint: res.status === 404
-            ? "Modelo no encontrado en tu cuenta. Define ANTHROPIC_MODEL en .env (ej. claude-sonnet-4-5, claude-3-5-sonnet-20241022, claude-haiku-4-5)."
-            : res.status === 401
-              ? "API key inválida. Revisa ANTHROPIC_API_KEY en .env (debe empezar por sk-ant-)."
-              : res.status === 400
-                ? "Request mal formado. Revisa los logs del servidor."
-                : "Falla del servicio Anthropic. Reintenta en 30s.",
-        },
-        { status: 500 },
+        { error: "El asistente no está disponible en este momento. Inténtalo de nuevo en unos minutos." },
+        { status: 502 },
       );
     }
 
@@ -479,7 +550,7 @@ export async function POST(request) {
       const toolUseBlocks = blocks.filter((b) => b.type === "tool_use");
       const resultados = await Promise.all(
         toolUseBlocks.map(async (tu) => {
-          console.log(`[chat] herramienta: ${tu.name}`, tu.input);
+          log("info", "chat.herramienta", { request_id: rid, herramienta: tu.name });
           const result = await ejecutarHerramienta(tu.name, tu.input || {});
           return {
             type:        "tool_result",
@@ -501,3 +572,5 @@ export async function POST(request) {
 
   return Response.json({ reply: "No pude procesar tu consulta. Intenta reformularla." });
 }
+
+export const POST = conRegistro("chat", manejarChat);
