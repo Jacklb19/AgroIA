@@ -51,9 +51,10 @@
   --shadow-lg: 0 20px 48px rgba(15, 23, 42, 0.12), 0 6px 12px rgba(15, 23, 42, 0.05);
   --ring-green: 0 0 0 4px rgba(26, 122, 74, 0.16);
   --ease: cubic-bezier(0.4, 0, 0.2, 1);
-  --font-display: "Inter Tight", "Segoe UI", system-ui, -apple-system, sans-serif;
-  --font-body: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  /* --f-* las define next/font en <html> (app/layout.js); si faltaran, cae a las fuentes del sistema. */
+  --font-display: var(--f-inter-tight), "Inter Tight", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-body: var(--f-inter), "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: var(--f-mono), "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
 }
 
 * { box-sizing: border-box; }
@@ -413,8 +414,8 @@ h1, h2, h3, h4 { margin: 0; font-family: var(--font-display); letter-spacing: -0
   padding: 20px 22px 16px;
   border-bottom: 1px solid var(--ink-200);
 }
-.card-head h3 {
-  font-size: 15px; font-weight: 600;
+.card-head h3, .card-head h2 {
+  margin: 0; font-size: 15px; font-weight: 600;
   letter-spacing: -0.012em;
 }
 .card-head .panel-sub { font-size: 12.5px; color: var(--ink-500); margin-top: 4px; line-height: 1.4; }
@@ -757,7 +758,7 @@ h1, h2, h3, h4 { margin: 0; font-family: var(--font-display); letter-spacing: -0
 .pbi-page-num {
   font-size: 11.5px;
   font-weight: 500;
-  color: var(--ink-400);
+  color: var(--ink-500);
   font-family: var(--font-mono);
 }
 .pbi-open-btn {
@@ -931,7 +932,7 @@ h1, h2, h3, h4 { margin: 0; font-family: var(--font-display); letter-spacing: -0
   display: grid; place-items: center;
   margin-bottom: 18px;
   font-size: 30px;
-  color: var(--ink-400);
+  color: var(--ink-500);
 }
 .result-empty .head { font-size: 16px; font-weight: 600; color: var(--ink-700); margin-bottom: 6px; letter-spacing: -0.012em; }
 .result-empty .sub { font-size: 13.5px; max-width: 320px; line-height: 1.55; }
@@ -1306,7 +1307,7 @@ h1, h2, h3, h4 { margin: 0; font-family: var(--font-display); letter-spacing: -0
 .arch-card .arch-num {
   font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--ink-400);
+  color: var(--ink-500);
   letter-spacing: 0.1em;
   font-weight: 600;
 }
@@ -1342,7 +1343,7 @@ h1, h2, h3, h4 { margin: 0; font-family: var(--font-display); letter-spacing: -0
   letter-spacing: -0.04em;
 }
 .footer-tagline { color: rgba(255,255,255,0.5); font-size: 12.5px; line-height: 1.6; max-width: 280px; margin-top: 12px; }
-.footer-col h5 {
+.footer-col h5, .footer-col .footer-h {
   color: white;
   font-size: 12px;
   text-transform: uppercase;
@@ -1556,7 +1557,7 @@ h1, h2, h3, h4 { margin: 0; font-family: var(--font-display); letter-spacing: -0
 }
 .chat-clear {
   display: inline-flex; align-items: center; gap: 6px;
-  font-size: 12px; color: var(--ink-400); background: none; border: none;
+  font-size: 12px; color: var(--ink-500); background: none; border: none;
   cursor: pointer; padding: 0; transition: color 0.15s;
   align-self: flex-start;
 }
@@ -1579,7 +1580,7 @@ h1, h2, h3, h4 { margin: 0; font-family: var(--font-display); letter-spacing: -0
   overflow-y: auto;
 }
 .chat-input:focus { border-color: var(--green-500); box-shadow: var(--ring-green); }
-.chat-input::placeholder { color: var(--ink-400); }
+.chat-input::placeholder { color: var(--ink-500); }
 .chat-send {
   width: 40px; height: 40px; border-radius: 10px; flex-shrink: 0;
   background: linear-gradient(135deg, var(--green-700), var(--green-600));
@@ -1589,7 +1590,7 @@ h1, h2, h3, h4 { margin: 0; font-family: var(--font-display); letter-spacing: -0
 }
 .chat-send:hover:not(:disabled) { opacity: 0.9; transform: scale(1.04); }
 .chat-send:disabled { opacity: 0.35; cursor: not-allowed; }
-.chat-hint { font-size: 11px; color: var(--ink-400); margin: 0; text-align: center; }
+.chat-hint { font-size: 11px; color: var(--ink-500); margin: 0; text-align: center; }
 
 @keyframes fadeUp {
   from { opacity: 0; transform: translateY(6px); }
@@ -1654,7 +1655,7 @@ h1, h2, h3, h4 { margin: 0; font-family: var(--font-display); letter-spacing: -0
 }
 .tour-skip {
   font-size: 12px;
-  color: var(--ink-400);
+  color: var(--ink-500);
   background: none;
   border: none;
   cursor: pointer;
@@ -2135,3 +2136,243 @@ a:focus-visible,
   0%, 100% { transform: scale(1);    box-shadow: 0 0 0 0 rgba(220,38,38,0.45); }
   50%      { transform: scale(1.06); box-shadow: 0 0 0 8px rgba(220,38,38,0);  }
 }
+
+/* ---------- Precios mayoristas (SIPSA) ---------- */
+.precios-status {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px;
+  padding: 12px 16px; margin-bottom: 20px;
+  background: white; border: 1px solid var(--ink-200); border-radius: var(--radius);
+  font-size: 13.5px; color: var(--ink-700);
+}
+.precios-status-sec { font-size: 12.5px; color: var(--ink-500); }
+.precios-badge {
+  display: inline-flex; align-items: center;
+  padding: 3px 10px; border-radius: 999px;
+  font-size: 12px; font-weight: 600;
+  background: var(--ink-100); color: var(--ink-700);
+}
+.precios-badge.ok   { background: var(--green-50); color: var(--green-700); }
+.precios-badge.warn { background: var(--amber-50); color: var(--amber-700); }
+.precios-badge.bad  { background: var(--red-50);   color: var(--red-700); }
+
+.precios-filtros {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  gap: 12px; align-items: end; margin-bottom: 20px;
+}
+.precios-limpiar {
+  padding: 11px 14px; border: 1px solid var(--ink-300); border-radius: 8px;
+  background: white; color: var(--ink-700); font-size: 13px; font-weight: 500;
+  transition: background 0.15s var(--ease), border-color 0.15s var(--ease);
+}
+.precios-limpiar:hover:not(:disabled) { background: var(--ink-50); border-color: var(--ink-500); }
+.precios-limpiar:disabled { opacity: 0.45; cursor: default; }
+.precios-limpiar:focus-visible, .range-btn:focus-visible, .precios-tabla th button:focus-visible,
+.precios-tabla tbody tr:focus-visible { outline: 2px solid var(--green-600); outline-offset: 2px; }
+
+.precios-nota { font-size: 13px; color: var(--ink-500); margin: 0 0 12px; }
+.precios-fuente { font-size: 12px; color: var(--ink-500); margin: 20px 0 0; }
+.precios-vacio { padding: 28px 8px; text-align: center; color: var(--ink-600); font-size: 14px; line-height: 1.55; }
+.precios-spark-vacio { color: var(--ink-500); }
+
+.precios-tabla-wrap {
+  overflow-x: auto; background: white;
+  border: 1px solid var(--ink-200); border-radius: var(--radius); box-shadow: var(--shadow-sm);
+}
+.precios-tabla { width: 100%; min-width: 820px; border-collapse: collapse; font-size: 13.5px; }
+.precios-tabla th {
+  text-align: left; padding: 11px 14px; white-space: nowrap;
+  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--ink-500); font-family: var(--font-mono);
+  background: var(--ink-50); border-bottom: 1px solid var(--ink-200);
+}
+.precios-tabla th button {
+  all: unset; cursor: pointer; text-transform: inherit; letter-spacing: inherit; font: inherit; color: inherit;
+}
+.precios-tabla th button:hover { color: var(--ink-900); }
+.precios-tabla th.num, .precios-tabla td.num { text-align: right; }
+.precios-tabla td { padding: 10px 14px; border-bottom: 1px solid var(--ink-100); vertical-align: middle; }
+.precios-tabla td small { display: block; font-size: 11.5px; color: var(--ink-500); margin-top: 1px; }
+.precios-tabla tbody tr { cursor: pointer; transition: background 0.12s var(--ease); }
+.precios-tabla tbody tr:hover { background: var(--green-50); }
+.precios-tabla tbody tr:last-child td { border-bottom: none; }
+.precios-tabla tbody tr.stale { opacity: 0.6; }
+.precios-tabla .precio { font-variant-numeric: tabular-nums; font-size: 14.5px; }
+.precios-tabla .rango { color: var(--ink-600); font-size: 12.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.precios-tag {
+  display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 999px;
+  font-size: 10.5px; background: var(--amber-50); color: var(--amber-700); white-space: nowrap;
+}
+.var-up   { color: var(--amber-700); font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.var-down { color: var(--blue-700);  font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.var-flat { color: var(--ink-500); white-space: nowrap; }
+
+.precios-rangos { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 18px; }
+.range-btn {
+  padding: 7px 14px; border: 1px solid var(--ink-300); border-radius: 999px;
+  background: white; color: var(--ink-700); font-size: 12.5px; font-weight: 500;
+}
+.range-btn:hover { background: var(--ink-50); }
+.range-btn.active { background: var(--green-700); border-color: var(--green-700); color: white; }
+.precios-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+.precios-stats > div { padding: 12px 14px; background: var(--ink-50); border: 1px solid var(--ink-200); border-radius: 8px; }
+.precios-stats span { display: block; font-size: 11.5px; color: var(--ink-500); margin-bottom: 4px; }
+.precios-stats strong { font-size: 18px; font-variant-numeric: tabular-nums; }
+.precios-chart-leyenda { min-height: 26px; margin-top: 8px; font-size: 12.5px; color: var(--ink-600); display: flex; flex-wrap: wrap; gap: 6px 18px; }
+.leyenda-item { display: inline-flex; align-items: center; gap: 6px; }
+.leyenda-item i { display: inline-block; width: 14px; height: 4px; border-radius: 2px; }
+
+/* ---------- Estados compartidos (cargando / vacío / error) y trazabilidad ---------- */
+.skel-wrap { display: flex; flex-direction: column; gap: 10px; padding: 8px 0; }
+.skel {
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--ink-100) 25%, var(--ink-200) 50%, var(--ink-100) 75%);
+  background-size: 200% 100%;
+  animation: skel-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes skel-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+.state-box {
+  padding: 22px 20px; text-align: center; border-radius: var(--radius);
+  border: 1px dashed var(--ink-300); background: var(--ink-50); color: var(--ink-700);
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+}
+.state-box p { margin: 0; font-size: 13.5px; color: var(--ink-600); max-width: 520px; line-height: 1.5; }
+.state-box.error { border-color: var(--red-100); background: var(--red-50); }
+.data-stamp {
+  display: flex; flex-wrap: wrap; gap: 2px 6px; margin-top: 12px;
+  font-size: 11.5px; color: var(--ink-500); font-family: var(--font-mono);
+}
+.kpi-sub { font-size: 12px; color: var(--ink-500); margin-top: 6px; }
+@media (prefers-reduced-motion: reduce) { .skel { animation: none; } }
+
+.informe-cabecera { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 16px; margin-bottom: 16px; }
+.informe-cabecera h3 { font-size: 20px; margin-bottom: 6px; }
+.informe-cabecera .precios-nota { max-width: 640px; }
+.informe-cabecera .field { min-width: 200px; }
+.informe-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.informe > .card, .informe-grid > .card { min-width: 0; overflow: hidden; }   /* la tabla interna hace scroll propio */
+.informe-lista ol { list-style: none; margin: 0; padding: 0; }
+.informe-lista li {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 14px; align-items: center;
+  padding: 10px 0; border-bottom: 1px solid var(--ink-100); font-size: 13.5px;
+}
+.informe-lista li:last-child { border-bottom: none; }
+.informe-lista small { display: block; font-size: 11.5px; color: var(--ink-500); margin-top: 1px; }
+.informe-precio { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+.informe-precio small { font-weight: 400; }
+
+@media (max-width: 860px) {
+  .informe-grid { grid-template-columns: 1fr; }
+  .precios-filtros { grid-template-columns: 1fr; }
+  .precios-limpiar { justify-self: start; }
+  .precios-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .precios-tabla tbody tr, .precios-limpiar { transition: none; }
+}
+
+/* ═══════════════════════════════════════════════════════
+   OLA 4 · navegación por enlaces, capas de información, datos y transparencia, móvil
+   ═══════════════════════════════════════════════════════ */
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+
+/* Los enlaces de navegación heredan el aspecto de los botones anteriores */
+a.nav-link, a.nav-mobile-link, a.nav-cta, a.nav-mobile-cta { text-decoration: none; }
+a.nav-link { display: inline-flex; align-items: center; white-space: nowrap; }
+a.nav-mobile-link { display: block; }
+a.nav-mobile-cta { display: block; text-align: center; }
+@media (max-width: 1180px) { .nav-cta { display: none; } .nav-link { padding: 8px 10px; } }
+
+/* Glosario: definición al pasar el ratón o al enfocar con teclado / tocar */
+.term { position: relative; border-bottom: 1px dotted currentColor; cursor: help; }
+.term:focus-visible { outline: 2px solid var(--green-600); outline-offset: 2px; border-radius: 2px; }
+.term-tip {
+  position: absolute; z-index: 30; left: 0; bottom: calc(100% + 8px); width: max-content; max-width: min(320px, 80vw);
+  padding: 10px 12px; border-radius: 8px; background: var(--ink-900); color: #fff;
+  font-size: 12.5px; font-weight: 400; line-height: 1.45; letter-spacing: 0; text-transform: none; text-align: left;
+  box-shadow: var(--shadow-md); visibility: hidden; opacity: 0; transition: opacity .12s var(--ease);
+  pointer-events: none;
+}
+.term:hover .term-tip, .term:focus .term-tip, .term:focus-within .term-tip { visibility: visible; opacity: 1; }
+.term-tip strong { color: #fff; }
+
+/* "¿Cómo se calcula?" */
+.info-panel { margin-top: 12px; border: 1px solid var(--ink-200); border-radius: 10px; background: var(--ink-50); }
+.info-panel summary { cursor: pointer; padding: 10px 14px; font-size: 13px; font-weight: 600; color: var(--green-700); list-style: none; display: flex; align-items: center; gap: 8px; }
+.info-panel summary::-webkit-details-marker { display: none; }
+.info-panel summary::before { content: "ⓘ"; font-size: 14px; }
+.info-panel summary:focus-visible { outline: 2px solid var(--green-600); outline-offset: 2px; border-radius: 8px; }
+.info-panel[open] summary { border-bottom: 1px solid var(--ink-200); }
+.info-panel-body { padding: 12px 14px; font-size: 13.5px; line-height: 1.55; color: var(--ink-700); }
+.info-panel-body p { margin: 0 0 8px; }
+.info-panel-body ul { margin: 0; padding-left: 18px; }
+.info-panel-body a { color: var(--green-700); }
+
+/* Acciones de tabla */
+.acciones { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.accion-btn { font-family: inherit; font-size: 12.5px; font-weight: 600; padding: 7px 12px; border-radius: 8px; border: 1px solid var(--ink-300); background: #fff; color: var(--ink-800, var(--ink-700)); cursor: pointer; }
+.accion-btn:hover:not(:disabled) { background: var(--ink-100); }
+.accion-btn:disabled { opacity: .5; cursor: not-allowed; }
+.accion-btn:focus-visible { outline: 2px solid var(--green-600); outline-offset: 2px; }
+.acciones-estado { font-size: 12px; color: var(--green-700); min-width: 90px; }
+.precios-barra { display: flex; justify-content: space-between; align-items: center; gap: 10px 16px; flex-wrap: wrap; margin-bottom: 10px; }
+.precios-barra .precios-nota { margin: 0; }
+.precios-fuente { display: none; }
+
+/* Precios: tarjetas en móvil */
+.precios-cards { list-style: none; margin: 0; padding: 0; display: none; gap: 10px; }
+.precio-card { width: 100%; text-align: left; font-family: inherit; display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border: 1px solid var(--ink-200); border-radius: 12px; background: #fff; cursor: pointer; }
+.precio-card:hover { border-color: var(--green-600); }
+.precio-card.stale { background: var(--ink-50); }
+.precio-card:focus-visible { outline: 2px solid var(--green-600); outline-offset: 2px; }
+.pc-top { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.pc-prod, .pc-precio { display: flex; flex-direction: column; }
+.pc-precio { text-align: right; font-size: 17px; }
+.pc-prod small, .pc-precio small { font-size: 11.5px; color: var(--ink-600); }
+.pc-vars { display: flex; gap: 16px; font-size: 12.5px; color: var(--ink-700); }
+.pc-pie { font-size: 11.5px; color: var(--ink-600); }
+@media (max-width: 720px) {
+  .precios-cards { display: grid; }
+  .precios-tabla-wrap { display: none; }
+}
+
+/* Portada: precios de hoy */
+.ph-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.ph-col h3 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-600); }
+.ph-col ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.ph-col li { display: flex; justify-content: space-between; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--ink-100); }
+.ph-prod { display: flex; flex-direction: column; min-width: 0; }
+.ph-prod small { font-size: 11.5px; color: var(--ink-600); }
+.ph-num { display: flex; flex-direction: column; align-items: flex-end; font-size: 14px; }
+.ph-vacio { font-size: 13px; color: var(--ink-600); }
+.ph-acciones { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+.ph-acciones a { text-decoration: none; display: inline-block; }
+@media (max-width: 720px) { .ph-grid { grid-template-columns: 1fr; } }
+
+/* Datos y transparencia */
+.datos-grid { display: grid; gap: 18px; }
+.datos-bloque h3 { margin: 0 0 4px; font-size: 18px; }
+.datos-sub { margin: 18px 0 8px; font-size: 14px; color: var(--ink-700); }
+.datos-aviso { margin: 0 0 18px; padding: 12px 16px; border-radius: 10px; background: var(--amber-50, #fffbeb); border: 1px solid var(--amber-600); color: var(--ink-900); font-size: 14px; }
+.datos-veredicto { margin: 10px 0; padding: 10px 14px; border-left: 4px solid var(--green-600); background: var(--green-50); font-size: 14px; border-radius: 0 8px 8px 0; }
+.datos-metricas { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; margin: 8px 0; }
+.datos-metricas > div { padding: 10px 12px; border: 1px solid var(--ink-200); border-radius: 10px; background: var(--ink-50); }
+.datos-metricas dt { font-size: 12px; color: var(--ink-600); margin-bottom: 4px; }
+.datos-metricas dd { margin: 0; font-size: 20px; font-weight: 700; font-family: var(--font-display); }
+.datos-metricas dd small { font-size: 12px; font-weight: 500; color: var(--ink-600); }
+.tabla-scroll { overflow-x: auto; margin: 8px 0; }
+.tabla-simple { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.tabla-simple th { text-align: left; font-weight: 600; font-size: 12px; color: var(--ink-600); padding: 8px 10px; border-bottom: 1px solid var(--ink-200); white-space: nowrap; }
+.tabla-simple td { padding: 9px 10px; border-bottom: 1px solid var(--ink-100); vertical-align: top; }
+.tabla-simple td small { display: block; color: var(--ink-600); font-size: 11.5px; margin-top: 2px; }
+.tabla-simple .num { text-align: right; font-variant-numeric: tabular-nums; }
+.tabla-simple a { color: var(--green-700); }
+@media (max-width: 720px) { .datos-metricas dd { font-size: 17px; } }
+/* Correcciones de desborde en móvil (detectadas por e2e/navegacion.spec.mjs a 375 px) */
+.term-tip { display: none; visibility: visible; opacity: 1; }
+.term:hover .term-tip, .term:focus .term-tip, .term:focus-within .term-tip { display: block; }
+@media (max-width: 720px) {
+  .term-tip { position: fixed; left: 12px; right: 12px; bottom: 12px; width: auto; max-width: none; }
+}
+.datos-grid > *, .datos-bloque, .datos-bloque .card-body { min-width: 0; }
+.metrics-table-wrap { overflow-x: auto; }
+@media (max-width: 720px) { .pbi-divider-label { white-space: normal; text-align: center; } }

@@ -3,6 +3,16 @@ import { useState, useEffect, useRef } from "react";
 import ConfidenceBar from "./charts/ConfidenceBar";
 import GemeloDigital from "./GemeloDigital";
 import { Icon } from "./icons";
+import { useApi } from "@/lib/useApi";
+import { EmptyState, ErrorState, Skeleton } from "./ui/Estados";
+import Term from "./ui/Term";
+import DataStamp from "./ui/DataStamp";
+import InfoPanel from "./ui/InfoPanel";
+import Acciones from "./ui/Acciones";
+
+/* Años ofrecidos: los últimos cuatro con datos históricos y el siguiente (si no hay predicción se avisa). */
+const ANIO_ACTUAL = new Date().getFullYear();
+const ANIOS = Array.from({ length: 6 }, (_, i) => String(ANIO_ACTUAL - 4 + i));
 
 /* ── Pasos del tour ─────────────────────────────────────────────────── */
 const TOUR_STEPS = [
@@ -21,8 +31,8 @@ const TOUR_STEPS = [
   {
     refKey: "periodo",
     placement: "right",
-    title: "📅 Período de proyección",
-    desc: "Define el año y semestre que quieres proyectar. Semestre A = enero a junio · Semestre B = julio a diciembre.",
+    title: "📅 Año de la predicción",
+    desc: "Elige el año. El modelo predice el rendimiento anual; si no hay predicción para ese año, verás la más reciente disponible.",
   },
   {
     refKey: "escenarios",
@@ -152,53 +162,92 @@ function TourOverlay({ steps, refs, onClose }) {
   );
 }
 
+const COLUMNAS_PRED = [
+  { clave: "municipio", titulo: "Municipio" }, { clave: "cultivo", titulo: "Cultivo" }, { clave: "anio", titulo: "Año" },
+  { clave: "yhat", titulo: "Rendimiento esperado t/ha" }, { clave: "low", titulo: "Límite inferior p10 t/ha" },
+  { clave: "high", titulo: "Límite superior p90 t/ha" }, { clave: "riesgo", titulo: "Riesgo" },
+  { clave: "real", titulo: "Rendimiento real registrado t/ha" }, { clave: "escenario", titulo: "Escenario ENSO/lluvia" },
+];
+
 /* ── Panel de resultado ──────────────────────────────────────────────── */
 function ResultPanel({ r }) {
-  const riskClass = r.risk.toLowerCase();
+  const riskClass = r.risk ? r.risk.toLowerCase() : "";
   const muniName  = r.muni.split(",")[0];
-  const sign      = r.yhat - r.hist >= 0 ? "+" : "";
+  const sign      = r.hist != null && r.yhat - r.hist >= 0 ? "+" : "";
+  const otroAnio  = r.anio != null && String(r.anio) !== String(r.year);
+  const mae       = r.modelo?.error_tipico_t_ha;
   return (
     <div className="result-filled fade-in">
       <div className="result-head">
         <div>
           <h4>{r.cultivo}</h4>
-          <div className="sub">{r.muni} · {r.year}{r.semester}</div>
+          <div className="sub">{r.muni} · predicción del año {r.anio ?? r.year}</div>
         </div>
-        <span className={`badge-risk ${riskClass}`}>
-          <Icon.alert /> Riesgo {r.risk}
-        </span>
+        {r.risk ? (
+          <span className={`badge-risk ${riskClass}`}>
+            <Icon.alert /> Riesgo {r.risk}
+          </span>
+        ) : (
+          <span className="badge-risk" title="No hay una alerta climática registrada para este municipio y año">Sin alerta registrada</span>
+        )}
       </div>
+      {otroAnio && (
+        <p className="kpi-sub" role="note">Se pidió {r.year}, pero la predicción más reciente disponible es la de {r.anio}.</p>
+      )}
 
       <div className="result-main">
         <div>
-          <div className="result-num">{r.yhat.toFixed(1)}<small>t/ha</small></div>
+          <div className="result-num">{r.yhat.toFixed(1)}<small><Term id="t/ha" /></small></div>
           <div className="result-lbl">Rendimiento esperado</div>
         </div>
-        <div className="ci-block">
-          <div className="ci-title">Intervalo de confianza · 95%</div>
-          <ConfidenceBar
-            low={r.low} mid={r.yhat} high={r.high}
-            vmin={Math.max(0, r.low - 0.5)} vmax={r.high + 0.5}
-          />
-        </div>
+        {r.low != null && r.high != null && (
+          <div className="ci-block">
+            <div className="ci-title">Rango probable (<Term id="p10-p90">p10–p90</Term>)</div>
+            <ConfidenceBar
+              low={r.low} mid={r.yhat} high={r.high}
+              vmin={Math.max(0, r.low - 0.5)} vmax={r.high + 0.5}
+            />
+          </div>
+        )}
       </div>
 
       <div className="metrics-3">
-        <div className="metric-mini"><div className="v">{r.risk}</div><div className="l">Nivel de riesgo</div></div>
-        <div className="metric-mini"><div className="v">{r.confidence}%</div><div className="l">Confianza</div></div>
-        <div className="metric-mini"><div className="v">{r.hist != null ? r.hist.toFixed(2) : "—"}</div><div className="l">Promedio hist.</div></div>
+        <div className="metric-mini"><div className="v">{r.risk ?? "—"}</div><div className="l">Nivel de riesgo</div></div>
+        <div className="metric-mini"><div className="v">{mae != null ? `±${mae}` : "—"}</div><div className="l"><Term id="MAE">Error típico</Term> (t/ha)</div></div>
+        <div className="metric-mini"><div className="v">{r.hist != null ? r.hist.toFixed(2) : "—"}</div><div className="l">Rendimiento real ({r.anio})</div></div>
       </div>
 
       <div className="context-note">
         <span className="lead">Contexto</span>
         El cultivo de <strong>{r.cultivo.toLowerCase()}</strong> en {muniName}
         {r.hist != null
-          ? <> muestra una desviación de <strong>{sign}{(r.yhat - r.hist).toFixed(2)} t/ha</strong> frente al rendimiento histórico registrado.</>
-          : <> tiene un rendimiento esperado de <strong>{r.yhat.toFixed(2)} t/ha</strong> para el período seleccionado.</>
+          ? <> tiene un rendimiento predicho que difiere <strong>{sign}{(r.yhat - r.hist).toFixed(2)} t/ha</strong> del rendimiento real registrado ese año.</>
+          : <> tiene un rendimiento esperado de <strong>{r.yhat.toFixed(2)} t/ha</strong>.</>
         }
-        {" "}El modelo pondera anomalías de precipitación, índice ENSO y series históricas por municipio-cultivo.
-        {r.fromDB && <span style={{ display: "block", marginTop: 6, fontSize: 11, color: "var(--blue-700)", fontFamily: "var(--font-mono)" }}>✓ Predicción desde XGBoost · base de datos real</span>}
+        {" "}El modelo parte del promedio histórico del municipio y el cultivo y lo ajusta con clima, ENSO y precios cuando hay datos.
+        {r.escenario?.ajuste_t_ha !== 0 && r.escenario?.nota && (
+          <span style={{ display: "block", marginTop: 6, fontSize: 12 }}>
+            Escenario {r.escenario.enso}/{r.escenario.lluvia}: {r.escenario.ajuste_t_ha > 0 ? "+" : ""}{r.escenario.ajuste_t_ha} t/ha sobre la predicción del modelo ({r.yhat_modelo} t/ha). {r.escenario.nota}
+          </span>
+        )}
       </div>
+
+      <DataStamp fuente="pred_rendimiento (modelo XGBoost)" fecha={r.modelo?.entrenado ? `entrenado el ${r.modelo.entrenado}` : null}
+                 nota={`predicción de ${r.anio ?? r.year}`} />
+      <InfoPanel>
+        <p><strong>Rendimiento esperado:</strong> el modelo estima cuánto se desvía este municipio y cultivo de su promedio histórico y lo suma a ese promedio.</p>
+        <p><strong>Rango <Term id="p10-p90">p10–p90</Term>:</strong> calibrado con los errores del modelo en años que no vio al entrenarse.</p>
+        <p><strong>Escenarios ENSO / lluvia:</strong> son reglas orientativas fijas aplicadas sobre la predicción; no son salidas del modelo.</p>
+        <p>Cifras del modelo, comparación con la <Term id="linea-base">línea base</Term> y límites: <a href="#metodologia">Metodología</a> y <a href="#datos">Datos y transparencia</a>.</p>
+      </InfoPanel>
+      <Acciones
+        nombreArchivo={`prediccion-${r.muni.split(",")[0]}-${r.cultivo}`.toLowerCase().replace(/\s+/g, "-")}
+        columnas={COLUMNAS_PRED}
+        filas={[{
+          municipio: r.muni, cultivo: r.cultivo, anio: r.anio ?? r.year, yhat: r.yhat, low: r.low, high: r.high,
+          riesgo: r.risk, real: r.hist, escenario: `${r.escenario_enso}/${r.escenario_lluvia}`,
+        }]}
+      />
 
       <ShapPanel shap={r.shap} />
     </div>
@@ -253,50 +302,73 @@ function ShapPanel({ shap }) {
 
 /* ── Tabla comparativa ───────────────────────────────────────────────── */
 function CompareTable({ r }) {
-  const neighbors = [
-    { name: "Espinal, Tolima",      yld: r.yhat + 0.3, risk: "BAJO",  delta: +6.2 },
-    { name: "Guamo, Tolima",        yld: r.yhat - 0.4, risk: "MEDIO", delta: -2.1 },
-    { name: "Saldaña, Tolima",      yld: r.yhat + 0.1, risk: "BAJO",  delta: +3.4 },
-    { name: "Purificación, Tolima", yld: r.yhat - 0.7, risk: "ALTO",  delta: -8.7 },
-  ];
+  const qs = new URLSearchParams({ muni: r.muni, cultivo: r.cultivo });
+  if (r.anio != null) qs.set("anio", r.anio);
+  const api = useApi(`/api/comparativo?${qs}`);
+  const vecinos = api.data?.vecinos ?? [];
+
   return (
     <div className="compare-table-wrap fade-in">
       <div className="head">
         <div>
           <h3>Comparativo regional</h3>
-          <p>Municipios vecinos en el mismo corredor agrícola.</p>
+          <p>Otros municipios del mismo departamento con predicción de {r.cultivo.toLowerCase()} en {r.anio ?? "el mismo año"}.</p>
         </div>
-        <span className="src-badge">pred_rendimiento · vecinos</span>
+        <span className="src-badge">pred_rendimiento · mismo departamento</span>
       </div>
-      <table className="compare-table">
-        <thead>
-          <tr><th>Municipio</th><th>Rendimiento</th><th>Riesgo</th><th>vs. histórico</th></tr>
-        </thead>
-        <tbody>
-          {neighbors.map((n) => (
-            <tr key={n.name}>
-              <td><strong>{n.name}</strong></td>
-              <td className="num">{n.yld.toFixed(1)} <span className="muted" style={{ fontSize: 11 }}>t/ha</span></td>
-              <td><span className={`badge-risk ${n.risk.toLowerCase()}`}>{n.risk}</span></td>
-              <td className={n.delta >= 0 ? "pos num" : "neg num"}>{n.delta >= 0 ? "+" : ""}{n.delta.toFixed(1)}%</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {api.status === "loading" && !api.data && <Skeleton />}
+      {api.status === "error" && <ErrorState texto="El comparativo no está disponible en este momento." onReintentar={api.recargar} />}
+      {api.status === "ok" && vecinos.length === 0 && (
+        <EmptyState titulo="Sin municipios para comparar" texto="No hay otros municipios de este departamento con predicción para este cultivo." />
+      )}
+      {vecinos.length > 0 && (
+        <table className="compare-table">
+          <thead>
+            <tr><th>Municipio</th><th>Rendimiento predicho</th><th>Riesgo</th><th>vs. real registrado</th></tr>
+          </thead>
+          <tbody>
+            {vecinos.map((n) => (
+              <tr key={n.municipio}>
+                <td><strong>{n.municipio}</strong></td>
+                <td className="num">{n.yhat.toFixed(1)} <span className="muted" style={{ fontSize: 11 }}>t/ha</span></td>
+                <td>{n.riesgo ? <span className={`badge-risk ${n.riesgo.toLowerCase()}`}>{n.riesgo}</span> : <span className="muted">—</span>}</td>
+                <td className={n.vs_historico_pct == null ? "num" : n.vs_historico_pct >= 0 ? "pos num" : "neg num"}>
+                  {n.vs_historico_pct == null ? "—" : `${n.vs_historico_pct >= 0 ? "+" : ""}${n.vs_historico_pct.toFixed(1)}%`}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
 
 /* ── Página principal ────────────────────────────────────────────────── */
-export default function PagePrediccion() {
+const ENSO_VALIDOS = ["Neutral", "El Niño", "La Niña"];
+const LLUVIA_VALIDAS = ["Normal", "Déficit", "Exceso"];
+
+/* La consulta vive en la URL (#prediccion?m=Pasto&c=Papa&y=2026&enso=El%20Niño&run=1): un enlace reproduce
+   la misma vista, con el resultado ya calculado si run=1. */
+export default function PagePrediccion({ ruta }) {
+  const { params, setParams } = ruta;
+  const inicial = useRef({
+    m: params.get("m") || "", c: params.get("c") || "", y: params.get("y"), enso: params.get("enso"),
+    lluvia: params.get("lluvia"), run: params.get("run") === "1",
+  }).current;                       // solo se lee al abrir la página
+
   const [municipios, setMunicipios] = useState([]);
   const [cultivos,   setCultivos]   = useState([]);
   const [muni,       setMuni]       = useState("");
   const [cultivo,    setCultivo]    = useState("");
-  const [year,       setYear]       = useState("2026");
-  const [semester,   setSemester]   = useState("A");
-  const [enso,       setEnso]       = useState("Neutral");
-  const [lluvia,     setLluvia]     = useState("Normal");
+  const yearInicial   = ANIOS.includes(inicial.y) ? inicial.y : "2026";
+  const ensoInicial   = ENSO_VALIDOS.includes(inicial.enso) ? inicial.enso : "Neutral";
+  const lluviaInicial = LLUVIA_VALIDAS.includes(inicial.lluvia) ? inicial.lluvia : "Normal";
+  const [year,       setYear]       = useState(yearInicial);
+  const [enso,       setEnso]       = useState(ensoInicial);
+  const [lluvia,     setLluvia]     = useState(lluviaInicial);
+  const [consultado, setConsultado] = useState(false);
+  const [listo,      setListo]      = useState(false);   // catálogos cargados: desde aquí los campos se reflejan en la URL
   const [result,     setResult]     = useState(null);
   const [loading,    setLoading]    = useState(false);
   const [tourActive, setTourActive] = useState(false);
@@ -318,56 +390,64 @@ export default function PagePrediccion() {
     result:     resultRef,
   };
 
-  useEffect(() => {
-    fetch("/api/municipios")
-      .then((r) => r.json())
-      .then((data) => {
-        const list = Array.isArray(data) ? data : [];
-        setMunicipios(list);
-        if (list.length) setMuni(list[0]);
-      })
-      .catch(() => {
-        const fallback = ["Ibagué, Tolima","Espinal, Tolima","Villavicencio, Meta","Pasto, Nariño","Santa Marta, Magdalena","Manizales, Caldas","Montería, Córdoba"];
-        setMunicipios(fallback);
-        setMuni(fallback[0]);
-      });
+  const [catalogoError, setCatalogoError] = useState(false);
 
-    fetch("/api/cultivos")
-      .then((r) => r.json())
-      .then((data) => {
-        const list = Array.isArray(data) ? data : [];
-        setCultivos(list);
-        if (list.length) setCultivo(list[0]);
-      })
-      .catch(() => {
-        const fallback = ["Maíz tecnificado","Arroz riego","Café arábica","Caña panelera","Plátano","Papa Diacol","Aguacate Hass"];
-        setCultivos(fallback);
-        setCultivo(fallback[0]);
-      });
+  /* Listas reales de municipios y cultivos con producción. Si fallan, se avisa: no hay listas de respaldo. */
+  useEffect(() => {
+    const cargar = (url, guardar, elegir, deseado) =>
+      fetch(url)
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+        .then((data) => {
+          const list = Array.isArray(data) ? data : [];
+          guardar(list);
+          if (list.length) elegir(list.includes(deseado) ? deseado : list[0]);   // el valor del enlace, si existe
+          return list.includes(deseado) ? deseado : list[0];
+        })
+        .catch(() => { setCatalogoError(true); return null; });
+    Promise.all([
+      cargar("/api/municipios", setMunicipios, setMuni, inicial.m),
+      cargar("/api/cultivos", setCultivos, setCultivo, inicial.c),
+    ]).then(([m, c]) => {
+      setListo(true);
+      if (inicial.run && m && c && inicial.m === m && inicial.c === c) consultar({ muni: m, cultivo: c, year: yearInicial, enso: ensoInicial, lluvia: lluviaInicial });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const onSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true); setResult(null);
+  /* Refleja los campos en la URL (reemplaza, no llena el historial). run=1 solo mientras haya un resultado vigente. */
+  useEffect(() => {
+    if (!listo) return;
+    setParams({
+      m: muni, c: cultivo, y: year,
+      enso: enso === "Neutral" ? "" : enso, lluvia: lluvia === "Normal" ? "" : lluvia,
+      run: consultado ? "1" : "",
+    });
+  }, [listo, muni, cultivo, year, enso, lluvia, consultado, setParams]);
+
+  const cambia = (setter) => (e) => { setter(e.target.value); setConsultado(false); };
+
+  const onSubmit = (e) => { e.preventDefault(); consultar({ muni, cultivo, year, enso, lluvia }); };
+
+  const consultar = async ({ muni, cultivo, year, enso, lluvia }) => {
+    setLoading(true); setResult(null); setConsultado(true);
     try {
       const res = await fetch("/api/prediccion", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ muni, cultivo, year, semester, enso, lluvia }),
+        body:    JSON.stringify({ muni, cultivo, year, enso, lluvia }),
       });
-      const data = await res.json();
-      setResult({ ...data, escenario_enso: enso, escenario_lluvia: lluvia });
+      const data = await res.json().catch(() => null);
+      if (res.status === 404) setResult({ sinDatos: true, muni, cultivo, mensaje: data?.mensaje });
+      else if (!res.ok || !data) setResult({ error: true });
+      else setResult({ ...data, escenario_enso: enso, escenario_lluvia: lluvia });
     } catch {
-      const base      = 4.4 + (cultivo.includes("Arroz") ? 0.6 : 0) + (cultivo.includes("Café") ? -0.8 : 0) + (semester === "B" ? 0.15 : 0);
-      const ensoAdj   = enso   === "El Niño" ? -0.5 : enso   === "La Niña" ? 0.3 : 0;
-      const lluviaAdj = lluvia === "Déficit"  ? -0.4 : lluvia === "Exceso"  ? -0.2 : 0;
-      const yhat      = +(base + ensoAdj + lluviaAdj).toFixed(1);
-      const risk      = yhat < 4.0 ? "ALTO" : yhat < 4.6 ? "MEDIO" : "BAJO";
-      setResult({ muni, cultivo, year, semester, yhat, low: +(yhat - 1.2).toFixed(1), high: +(yhat + 1.2).toFixed(1), risk, confidence: risk === "BAJO" ? 86 : risk === "MEDIO" ? 78 : 64, hist: 4.4 });
+      setResult({ error: true });      // sin conexión: se avisa, no se calcula un valor de reemplazo
     } finally {
       setLoading(false);
     }
   };
+
+  const hayResultado = result && !result.error && !result.sinDatos;
 
   return (
     <>
@@ -395,8 +475,8 @@ export default function PagePrediccion() {
 
               <div className="form-row" ref={muniRef}>
                 <div className="field">
-                  <label>Municipio</label>
-                  <select value={muni} onChange={(e) => setMuni(e.target.value)}>
+                  <label htmlFor="pred-muni">Municipio</label>
+                  <select id="pred-muni" value={muni} onChange={cambia(setMuni)}>
                     {municipios.map((m) => <option key={m}>{m}</option>)}
                   </select>
                   <ClimaActualWidget muni={muni} />
@@ -405,26 +485,20 @@ export default function PagePrediccion() {
 
               <div className="form-row" ref={cultivoRef}>
                 <div className="field">
-                  <label>Cultivo</label>
-                  <select value={cultivo} onChange={(e) => setCultivo(e.target.value)}>
+                  <label htmlFor="pred-cultivo">Cultivo</label>
+                  <select id="pred-cultivo" value={cultivo} onChange={cambia(setCultivo)}>
                     {cultivos.map((c) => <option key={c}>{c}</option>)}
                   </select>
                 </div>
               </div>
 
-              <div className="form-row cols2" ref={periodoRef}>
+              <div className="form-row" ref={periodoRef}>
                 <div className="field">
-                  <label>Año</label>
-                  <select value={year} onChange={(e) => setYear(e.target.value)}>
-                    <option>2026</option><option>2027</option><option>2028</option>
+                  <label htmlFor="pred-anio">Año de la predicción</label>
+                  <select id="pred-anio" value={year} onChange={cambia(setYear)}>
+                    {ANIOS.map((a) => <option key={a}>{a}</option>)}
                   </select>
-                </div>
-                <div className="field">
-                  <label>Semestre</label>
-                  <select value={semester} onChange={(e) => setSemester(e.target.value)}>
-                    <option value="A">A (Ene–Jun)</option>
-                    <option value="B">B (Jul–Dic)</option>
-                  </select>
+                  <div className="kpi-sub">El modelo predice el rendimiento anual. Si no hay predicción para ese año, se muestra la más reciente disponible.</div>
                 </div>
               </div>
 
@@ -432,14 +506,14 @@ export default function PagePrediccion() {
                 <div className="adv-title">Escenarios avanzados</div>
                 <div className="form-row cols2" style={{ marginBottom: 0 }}>
                   <div className="field">
-                    <label>ENSO</label>
-                    <select value={enso} onChange={(e) => setEnso(e.target.value)}>
+                    <label htmlFor="pred-enso"><Term id="ENSO" /></label>
+                    <select id="pred-enso" value={enso} onChange={cambia(setEnso)}>
                       <option>Neutral</option><option>El Niño</option><option>La Niña</option>
                     </select>
                   </div>
                   <div className="field">
-                    <label>Régimen lluvia</label>
-                    <select value={lluvia} onChange={(e) => setLluvia(e.target.value)}>
+                    <label htmlFor="pred-lluvia">Régimen lluvia</label>
+                    <select id="pred-lluvia" value={lluvia} onChange={cambia(setLluvia)}>
                       <option>Normal</option><option>Déficit</option><option>Exceso</option>
                     </select>
                   </div>
@@ -476,15 +550,26 @@ export default function PagePrediccion() {
                 <div className="result-empty">
                   <div className="lupa"><Icon.cpu /></div>
                   <div className="head">Ejecutando modelo…</div>
-                  <div className="sub">XGBoost · 1.500 árboles · profundidad 8 · inferencia distribuida.</div>
+                  <div className="sub">Consultando la predicción guardada del modelo.</div>
                 </div>
               )}
-              {result && !loading && <ResultPanel r={result} />}
+              {result?.error && !loading && <ErrorState texto="La predicción no está disponible en este momento. Intenta de nuevo en unos minutos." />}
+              {result?.sinDatos && !loading && (
+                <EmptyState titulo="Sin predicción para esta combinación"
+                  texto={result.mensaje || "El modelo no tiene predicciones para ese municipio y cultivo."} />
+              )}
+              {hayResultado && !loading && <ResultPanel r={result} />}
             </div>
           </div>
 
-          {result && !loading && <CompareTable r={result} />}
-          {result && !loading && (
+          {catalogoError && (
+            <div style={{ marginTop: 16 }}>
+              <ErrorState texto="No se pudieron cargar las listas de municipios y cultivos. Recarga la página o inténtalo más tarde." />
+            </div>
+          )}
+
+          {hayResultado && !loading && <CompareTable r={result} />}
+          {hayResultado && !loading && (
             <RecomendacionPanel
               muni={result.muni}
               cultivo={result.cultivo}
@@ -492,7 +577,7 @@ export default function PagePrediccion() {
               lluvia={result.escenario_lluvia || "Normal"}
             />
           )}
-          {result && !loading && <GemeloDigital muni={result.muni} cultivo={result.cultivo} />}
+          {hayResultado && !loading && <GemeloDigital muni={result.muni} cultivo={result.cultivo} />}
         </div>
       </section>
     </>
@@ -581,6 +666,7 @@ function RecomendacionPanel({ muni, cultivo, enso, lluvia }) {
             Proyección con escenario actual: <strong>{data.rendimiento_proyectado} t/ha</strong> · base {data.rendimiento_base ?? "—"} t/ha · aptitud SIPRA: <code>{data.aptitud_sipra || "n/d"}</code>
           </div>
         )}
+        {data.aviso && <p className="kpi-sub" role="note" style={{ marginTop: 10 }}>ℹ️ {data.aviso}</p>}
       </div>
     </div>
   );

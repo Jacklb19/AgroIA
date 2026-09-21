@@ -6,7 +6,9 @@ const LINKS = [
   { id: "inicio",      label: "Inicio" },
   { id: "dashboards",  label: "Dashboards" },
   { id: "prediccion",  label: "Predicción" },
+  { id: "precios",     label: "Precios" },
   { id: "asistente",   label: "Asistente IA" },
+  { id: "datos",       label: "Datos" },
   { id: "metodologia", label: "Metodología" },
   { id: "impacto",     label: "Impacto" },
 ];
@@ -14,7 +16,10 @@ const LINKS = [
 export default function Nav({ active, onNav }) {
   const [open, setOpen] = useState(false);
 
-  const navigate = (id) => {
+  /* Son enlaces reales (#pagina): se pueden abrir en otra pestaña o copiar. El clic normal se maneja aquí. */
+  const ir = (id) => (e) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;   // dejar que el navegador abra en pestaña nueva
+    e.preventDefault();
     onNav(id);
     setOpen(false);
   };
@@ -30,26 +35,29 @@ export default function Nav({ active, onNav }) {
           </div>
         </div>
 
-        <nav className="nav-links">
+        <nav className="nav-links" aria-label="Secciones">
           {LINKS.map((l) => (
-            <button
+            <a
               key={l.id}
+              href={`#${l.id}`}
               className={`nav-link ${active === l.id ? "active" : ""}`}
-              onClick={() => onNav(l.id)}
+              aria-current={active === l.id ? "page" : undefined}
+              onClick={ir(l.id)}
             >
               {l.label}
-            </button>
+            </a>
           ))}
         </nav>
 
-        <button className="nav-cta" onClick={() => onNav("prediccion")}>
+        <a href="#prediccion" className="nav-cta" onClick={ir("prediccion")}>
           Consultar Predicción <Icon.arrow className="arrow" />
-        </button>
+        </a>
 
         <button
           className={`nav-hamburger ${open ? "open" : ""}`}
           onClick={() => setOpen(!open)}
           aria-label="Menú"
+          aria-expanded={open}
         >
           <span />
           <span />
@@ -58,20 +66,22 @@ export default function Nav({ active, onNav }) {
       </div>
 
       {open && (
-        <div className="nav-mobile">
+        <nav className="nav-mobile" aria-label="Secciones (móvil)">
           {LINKS.map((l) => (
-            <button
+            <a
               key={l.id}
+              href={`#${l.id}`}
               className={`nav-mobile-link ${active === l.id ? "active" : ""}`}
-              onClick={() => navigate(l.id)}
+              aria-current={active === l.id ? "page" : undefined}
+              onClick={ir(l.id)}
             >
               {l.label}
-            </button>
+            </a>
           ))}
-          <button className="nav-mobile-cta" onClick={() => navigate("prediccion")}>
+          <a href="#prediccion" className="nav-mobile-cta" onClick={ir("prediccion")}>
             Consultar Predicción
-          </button>
-        </div>
+          </a>
+        </nav>
       )}
     </header>
   );

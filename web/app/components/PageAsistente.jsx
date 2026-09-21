@@ -80,6 +80,9 @@ export default function PageAsistente() {
   const [vozDisponible, setVozDisponible] = useState(false);
   const recognitionRef = useRef(null);
 
+  /* ── Lectura en voz alta de las respuestas — apagada por defecto ── */
+  const [vozRespuestaActiva, setVozRespuestaActiva] = useState(false);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -125,6 +128,13 @@ export default function PageAsistente() {
   const enviar = async (texto) => {
     const txt = (texto || input).trim();
     if (!txt || loading) return;
+    if (txt.length > 2000) {   // mismo límite que valida el servidor (lib/rateLimit.js)
+      setMessages([...messages, { role: "user", content: txt.slice(0, 200) + "…" }, {
+        role: "assistant", content: "⚠ Tu mensaje es demasiado largo. Por favor escríbelo en menos de 2.000 caracteres.",
+      }]);
+      setInput("");
+      return;
+    }
 
     const userMsg  = { role: "user", content: txt };
     const newMsgs  = [...messages, userMsg];
@@ -148,7 +158,7 @@ export default function PageAsistente() {
         reply = "Sin respuesta del servidor.";
       }
       setMessages([...newMsgs, { role: "assistant", content: reply }]);
-      if (vozDisponible && reply && data.reply) hablar(reply);
+      if (vozRespuestaActiva && reply && data.reply) hablar(reply);
     } catch {
       setMessages([...newMsgs, {
         role:    "assistant",
@@ -258,6 +268,30 @@ export default function PageAsistente() {
                   Nueva conversación
                 </button>
               )}
+              <button
+                className="chat-clear"
+                onClick={() => {
+                  if (vozRespuestaActiva && typeof window !== "undefined" && window.speechSynthesis) {
+                    window.speechSynthesis.cancel();
+                  }
+                  setVozRespuestaActiva((v) => !v);
+                }}
+                title={vozRespuestaActiva ? "Desactivar lectura en voz alta" : "Activar lectura en voz alta"}
+                aria-pressed={vozRespuestaActiva}
+              >
+                {vozRespuestaActiva ? (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+                    <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+                  </svg>
+                ) : (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+                    <line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>
+                  </svg>
+                )}
+                {vozRespuestaActiva ? "Voz activada" : "Voz desactivada"}
+              </button>
               <div className="chat-input-row">
                 <textarea
                   ref={inputRef}
@@ -291,6 +325,7 @@ export default function PageAsistente() {
                 )}
                 <button
                   className="chat-send"
+                  aria-label="Enviar mensaje"
                   onClick={() => enviar()}
                   disabled={!input.trim() || loading}
                 >

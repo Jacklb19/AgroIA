@@ -43,7 +43,7 @@ Colombia es una de las naciones con mayor diversidad agroclimática del mundo, c
 
 | # | Dataset | Fuente | Recurso ID | Descripción |
 |---|---------|--------|-----------|-------------|
-| 1 | **Producción Agrícola Municipal (EVA A04/A05)** | DANE — datos.gov.co | `uejq-wxrr` | Área sembrada, cosechada, producción (ton) y rendimiento (t/ha) por municipio, cultivo y año. 2007–2025 |
+| 1 | **Producción Agrícola Municipal (EVA A04/A05)** | DANE — datos.gov.co | `uejq-wxrr` | Área sembrada, cosechada, producción (ton) y rendimiento (t/ha) por municipio, cultivo y año. 2019–2025 |
 | 2 | **Catálogo de Estaciones IDEAM** | IDEAM — datos.gov.co | `hp9r-jxuu` | 991 estaciones con coordenadas, altitud, estado activo/inactivo y municipio asociado |
 | 3 | **Precipitación IDEAM (series históricas)** | IDEAM — datos.gov.co | `s54a-sgyg` | Registros crudos de precipitación en milímetros por estación y período |
 | 4 | **Variables Climáticas Combinadas IDEAM** | IDEAM — datos.gov.co | `57sv-p2fu` | Temperatura, humedad relativa y brillo solar por estación. 2018–2026 |
@@ -92,74 +92,56 @@ Colombia es una de las naciones con mayor diversidad agroclimática del mundo, c
 
 ## 🔬 Tipo de Análisis
 
-### 1. Análisis Descriptivo — Estadística Inferencial (ANOVA)
-Se realizaron **4 pruebas ANOVA de una vía** con sus respectivos tests post-hoc Tukey HSD:
+### 1. Análisis descriptivo — comparación de grupos
+Tres comparaciones sobre datos reales, con supuestos realistas (`validate/anova_tests.py`, `validate/anova_robusto.py`):
 
-| # | Hipótesis | Variable | Factor | p-valor |
-|---|-----------|----------|--------|---------|
-| 1 | ¿Llueve diferente en El Niño, La Niña y Neutro? | Precipitación mm | Fase ENSO | **< 0.001 ★★★** |
-| 2 | ¿Los insumos tienen precios distintos por categoría? | Precio COP | Tipo insumo | **< 0.001 ★★★** |
-| 3 | ¿Hay estacionalidad de lluvias en Colombia? | Precipitación mm | Trimestre | **< 0.001 ★★★** |
-| 4 | ¿Llueve igual en Ibagué, Pasto y Villavicencio? | Precipitación mm (NASA) | Municipio | **< 0.001 ★★★** |
+| # | Pregunta | Factor |
+|---|----------|--------|
+| 1 | ¿Llueve diferente en El Niño, La Niña y Neutro? | Fase ENSO |
+| 2 | ¿Hay estacionalidad de lluvias en Colombia? | Trimestre |
+| 3 | ¿Llueve igual en Ibagué, Pasto y Villavicencio? (fuente externa NASA) | Municipio |
 
-### 2. Análisis Predictivo — Regresión
-- **Objetivo**: Predecir el rendimiento agrícola (t/ha) de cualquier cultivo en cualquier municipio.
-- **Tipo**: Regresión continua (variable de salida numérica: toneladas por hectárea).
+Cada prueba compara **una unidad independiente por mes** (no miles de lecturas estación-mes, que no son independientes), usa **ANOVA de Welch** y **Kruskal-Wallis**, reporta el **tamaño del efecto (η²)** y un post-hoc de **Mann-Whitney con corrección de Holm**.
+Resultado: la **estacionalidad** tiene un efecto grande; el efecto de **ENSO** sobre la lluvia mensual es **pequeño** (p ≈ 0,03, η² ≈ 0,05; solo El Niño vs. Neutro se distingue); con solo 12 meses por ciudad, la prueba de NASA no distingue pares concluyentes. (La versión anterior trataba cada lectura como independiente y reportaba p < 0,001 en todo; eso sobrestimaba la evidencia. Se eliminó la prueba de precios de insumos por tipo, que comparaba unidades distintas.)
+
+### 2. Análisis predictivo — regresión del rendimiento
+- **Objetivo**: rendimiento (t/ha) por municipio × cultivo × año.
+- **Modelo**: XGBoost que aprende la **desviación respecto al promedio histórico** del municipio × cultivo.
+- **Evaluación honesta**: validación temporal **por año**, el último año con datos se reserva como año de prueba (no se usa para entrenar ni ajustar), y siempre se compara con una **línea base** (el promedio histórico). Solo se guardan predicciones **fuera de muestra**.
+
+### 3. Alerta climática anticipada
+El nivel de riesgo se define con un **índice por reglas** (no hay etiquetas históricas validadas). El modelo predice ese índice del **mes siguiente** con corte temporal y se compara con la persistencia ("el mes siguiente repite el actual").
 
 ---
 
 ## 🤖 Modelo Utilizado
 
-### Algoritmo: **XGBoost Regressor** con Optimización Bayesiana (Optuna)
-
-| Parámetro | Valor |
-|-----------|-------|
-| Algoritmo | XGBoost Regressor |
-| Optimización | Optuna — TPE Sampler Bayesiano |
-| Trials Optuna | **200 experimentos** |
-| N° estimadores | 400–1.500 (ajustado automáticamente) |
-| Profundidad máxima | 4–10 niveles |
-| Tasa de aprendizaje | 0.01–0.15 (log-uniforme) |
-| Validación cruzada | TimeSeriesSplit — 5 folds temporales |
-| Conjunto de prueba | Hold-out temporal: últimos 20% de años |
-| Explicabilidad | **SHAP** — valores Shapley por predicción |
+| Aspecto | Detalle |
+|---------|---------|
+| Algoritmo | XGBoost Regressor (objetivo: error absoluto) sobre la desviación vs. la línea base |
+| Ajuste | Optuna (TPE); número de pruebas configurable con `OPTUNA_TRIALS` (por defecto 60) |
+| Validación | Ventana creciente **por año** (entrena con años anteriores, valida en el siguiente) |
+| Prueba final | Último año con datos, fuera del entrenamiento y del ajuste |
+| Intervalos | p10–p90 calibrados con los residuos reales de la validación (por cultivo cuando hay datos) |
+| Explicabilidad | SHAP por predicción (top 3 factores) |
+| Datos faltantes | Se dejan como NaN; nunca se rellenan con 0 |
 
 ---
 
-## 📈 Resultados Clave
+## 📈 Resultados
 
-### Métricas del Modelo de Rendimiento
+Las métricas **no están escritas a mano**: cada entrenamiento las guarda en `model_version.metricas_json` y la web las lee (pestañas Inicio, Dashboards y Metodología, y `/api/modelo/metricas`).
 
-| Métrica | Descripción | Resultado |
-|---------|-------------|-----------|
-| **R²** | Coeficiente de determinación | > 0.80 |
-| **MAE** | Error Absoluto Medio (t/ha) | < 0.50 t/ha |
-| **RMSE** | Raíz del Error Cuadrático Medio | < 0.80 t/ha |
+Ejemplo de una corrida real con los datos de producción del DANE (2019–2025) **sin datos de clima cargados**: en el año de prueba 2025 el modelo obtuvo R² ≈ 0,87 y MAE ≈ 2,26 t/ha frente a MAE ≈ 2,34 t/ha de la línea base (mejora ≈ 3 %), con intervalos p10–p90 que contienen el valor real ≈ 83 % de las veces (esperado: 80 %). El R² es alto porque los cultivos tienen rendimientos muy distintos entre sí; por eso la comparación relevante es el MAE frente a la línea base. Al cargar el clima del IDEAM el resultado puede cambiar: es el que debes leer en tu base de datos.
 
-### Cobertura del Sistema
+### Cobertura de datos
+Los valores de cobertura (municipios, cultivos, rango de años) se calculan en vivo desde la base de datos: ver `/api/impacto`. La fuente de producción (EVA, `uejq-wxrr`) trae datos **2019–2025**.
 
-| Indicador | Valor |
-|-----------|-------|
-| Estaciones climáticas IDEAM | **991** |
-| Municipios cubiertos | **> 1.100** |
-| Cultivos analizados | **> 50** |
-| Período de producción | **2007–2025** |
-| Período de clima | **2018–2026** |
-| Tablas en base de datos | **18** |
-
-### Resultados ANOVA
-
-Todas las **4 pruebas ANOVA** arrojaron **p < 0.001**, confirmando con evidencia estadística rigurosa que el clima (ENSO, estacionalidad y geografía) tiene un impacto diferencial y significativo sobre los ciclos agrícolas en Colombia.
-
----
-
-## 🧠 Interpretación
-
-- **El modelo XGBoost** identifica la lluvia acumulada anual, la temperatura y la aptitud del suelo como los predictores más determinantes del rendimiento agrícola.
-- Los **lags temporales** capturan efectos de largo plazo en cultivos permanentes (café, plátano, palma), donde las condiciones climáticas de años anteriores impactan la cosecha actual.
-- Los **valores SHAP** permiten explicar cada predicción individual: el sistema puede indicar, por ejemplo, que "el déficit hídrico registrado durante El Niño 2024 redujo el rendimiento predicho en 0.3 t/ha para el maíz en Córdoba".
-- El **análisis ANOVA** confirma científicamente que los datos justifican tratar por separado cada fase ENSO, región natural y semestre del año al modelar el rendimiento.
-- Durante **años El Niño**, el modelo anticipa caídas de rendimiento de hasta 25% en cultivos transitorios de las regiones Andina y Caribe.
+### Limitaciones conocidas
+- La aptitud de suelo (UPRA/SIPRA) **no se está usando**: el servicio ArcGIS dejó de publicar las capas.
+- El "SPI" es una anomalía estandarizada calculada con unos 8 años de clima (2018+), no el SPI clásico de 30 años.
+- Los ajustes por escenario ENSO/lluvia del simulador son reglas fijas orientativas, no salidas del modelo.
+- Los precios SIPSA cubren 36 productos frescos; solo se enlazan a cultivos de la EVA los que tienen equivalencia clara.
 
 ---
 
@@ -191,32 +173,77 @@ Para ver y probar la solución funcionando en tiempo real a través de los sigui
 
 | Documento | Descripción |
 |-----------|-------------|
-| [Planteamiento del Problema](docs/planteamiento_problema.md) | Contexto, problema y objetivos del proyecto |
-| [Marco Metodológico](docs/marco_metodologico.md) | Pipeline ETL, metodología ML y protocolo estadístico |
-| [Fuentes de Datos](docs/fuentes_datos.md) | Descripción completa de cada dataset |
-| [Diccionario de Datos](docs/diccionario_datos.md) | Definición de cada variable en la base de datos |
-| [Arquitectura del Sistema](docs/architecture.md) | Diagrama e infraestructura del sistema |
-| [Guía de Validación](docs/validation_guide.md) | Cómo reproducir resultados y pruebas ANOVA |
-| [Conclusiones](docs/conclusiones.md) | Hallazgos, limitaciones y trabajo futuro |
+| [Arquitectura](docs/ARQUITECTURA.md) | Componentes, flujo de datos y decisiones de diseño (con diagrama) |
+| [Diccionario de datos](docs/DICCIONARIO_DATOS.md) | Tablas y columnas de la base de datos (**generado** desde el esquema real) |
+| [Operación](docs/OPERACION.md) | Migraciones, rol de solo lectura, alertas, imágenes Docker y CI |
+| [Runbook de incidentes](docs/RUNBOOK.md) | Qué hacer cuando algo falla o los datos se atrasan |
+| [Puesta en marcha de Precios](docs/PRECIOS_PUESTA_EN_MARCHA.md) | Supabase, Railway y Vercel paso a paso |
+| [Contribuir](CONTRIBUTING.md) | Reglas del proyecto y flujo de trabajo |
+
+La metodología, las métricas del modelo y los límites conocidos están en la propia aplicación (pestañas **Metodología** y **Datos**), leídos de la base de datos.
 
 ---
 
 ## ⚙️ Cómo Correr Localmente
 
-```bash
-# 1. Instalar dependencias del frontend
-cd web && npm install
+**Con datos de ejemplo (sin descargar nada; requiere Docker):**
 
-# 2. Iniciar servidor de desarrollo
-npm run dev
-# → http://localhost:3000
-
-# 3. (Opcional) Regenerar gráficas ANOVA
-cd .. && python -m validate.anova_tests --verbose
-
-# 4. (Opcional) Ejecutar pipeline ETL completo
-python run_pipeline.py --mode all --once
+```powershell
+.\scripts\tasks.ps1 setup    # venv + dependencias + Postgres 16 en Docker + migraciones + datos SINTÉTICOS
+.\scripts\tasks.ps1 dev      # web en http://localhost:3000 contra esa base local
+.\scripts\tasks.ps1 test     # ruff + pytest (incluye pruebas contra Postgres)
 ```
+
+Los datos de ejemplo son inventados a propósito (solo sirven para ver la interfaz y probar); la web lo avisa en `/api/estado`.
+`seed_dev.py` se niega a correr contra una base que no sea local.
+
+**Con datos reales** (`.env` con tu base; ver [.env.example](.env.example)):
+
+```bash
+python -m load.migrate                       # aplica las migraciones pendientes (migrations/)
+python run_pipeline.py --mode all --once     # ETL completo: core + extended + modelos
+python run_pipeline.py --mode precios --once # ingesta diaria de precios SIPSA
+python run_pipeline.py --mode salud --once   # solo revisa frescura y avisa por webhook
+python -m validate.anova_tests --export-web  # (opcional) regenera gráficas ANOVA
+```
+
+Operación, seguridad de la base (rol de solo lectura, RLS), alertas y CI: **[docs/OPERACION.md](docs/OPERACION.md)** · cómo contribuir: **[CONTRIBUTING.md](CONTRIBUTING.md)**.
+
+---
+
+## 💲 Precios mayoristas diarios (SIPSA – DANE)
+
+Sección **Precios** de la web: precio por kilo de 36 frutas, verduras, tubérculos y plátanos en ~24 mercados
+mayoristas de 20 departamentos (por ejemplo, papa criolla en Pasto), con variación diaria y semanal, historial
+desde 2020, informe diario y pronóstico a 1–10 días hábiles.
+
+**Qué es y qué no es**
+- Son precios **mayoristas** (no de venta al consumidor). No incluye granos, carnes, lácteos, huevos ni café.
+- DANE publica **una vez por día hábil** (hacia el mediodía). "Cada hora" significa que el sistema revisa cada hora
+  si hay dato nuevo; la página muestra la fecha del dato y la hora de la última revisión.
+- No todos los mercados reportan todos los productos: por ejemplo, Pasto dejó de reportar papa negra en 2020.
+
+**Fuentes**: Excel diario `anex-SIPSADiario-DDmmmAAAA.xlsx` (16 mercados, sondeo horario barato) y servicio SOAP 1.2
+`appweb.dane.gov.co/sipsaWS` (historial completo con mín/máx y los demás mercados; ~300 MB, sin filtros de fecha).
+
+```bash
+python run_prices.py --mode init        # aplica las migraciones pendientes (migrations/)
+python run_prices.py --mode backfill    # historial completo por SOAP (una vez)
+python run_prices.py --mode hourly      # sondeo horario + pronóstico + informe (cron de Railway: 0 * * * *)
+python run_prices.py --mode forecast    # reentrena con backtest y pronostica
+python run_prices.py --mode informe     # regenera el informe del último día
+```
+
+📋 **Guía de puesta en marcha paso a paso (Supabase, Railway, Vercel): [docs/PRECIOS_PUESTA_EN_MARCHA.md](docs/PRECIOS_PUESTA_EN_MARCHA.md)**
+
+El cron horario se despliega como un segundo servicio de Railway con `railway.precios.json`
+(`startCommand: python run_prices.py --mode hourly`). Las rutas web están en `web/app/api/precios/*`
+y la página en `web/app/components/PagePrecios.jsx`.
+
+**Pronóstico**: XGBoost global sobre el cambio logarítmico a h días hábiles, con backtest de origen rodante ordenado
+por fecha. Solo se publica como "modelo" para un producto si supera en el backtest a la línea base
+("el precio de hoy no cambia"); si no, se muestra la línea base con confianza baja. Las métricas quedan en
+`model_version.metricas_json`.
 
 ---
 
