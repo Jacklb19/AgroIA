@@ -7,7 +7,6 @@ El resultado se guarda en data/raw/manual/municipios/municipios_colombia.geojson
 y se reutiliza en ejecuciones posteriores sin regenerar.
 """
 import logging
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -15,7 +14,7 @@ import geopandas as gpd
 from shapely.geometry import MultiPoint, box, Point
 from shapely.ops import voronoi_diagram
 
-from config.settings import DATA_RAW, MANUAL_DATA_DIR
+from config.settings import MANUAL_DATA_DIR
 
 logger = logging.getLogger(__name__)
 

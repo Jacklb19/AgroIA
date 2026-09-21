@@ -111,7 +111,7 @@ def agregar_id_municipio(df: pd.DataFrame, col_nombre: str) -> pd.DataFrame:
     pct   = nulos / total * 100
     logger.info(f"Normalización municipios: {total - nulos}/{total} resueltos ({pct:.1f}% sin resolver)")
     if pct > 5:
-        logger.warning(f"Más del 5% de municipios sin resolver — revisar synonyms_municipios.csv")
+        logger.warning("Más del 5% de municipios sin resolver — revisar synonyms_municipios.csv")
     return df
 
 

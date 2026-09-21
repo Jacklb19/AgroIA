@@ -1,6 +1,5 @@
 # syntax=docker/dockerfile:1
-# Servicio del ETL completo y entrenamiento (run_pipeline.py). Multi-etapa: las herramientas de compilacion no llegan a la imagen final.
-# El job horario de precios usa Dockerfile.precios (mucho mas liviano).
+# Job horario de precios (run_prices.py --mode hourly): solo requirements-precios.txt (sin geopandas, optuna, shap...).
 ARG PYTHON_VERSION=3.13
 
 FROM python:${PYTHON_VERSION}-slim AS build
@@ -8,11 +7,11 @@ ENV PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 WORKDIR /w
-COPY requirements.txt requirements-precios.txt ./
-RUN pip install -r requirements.txt
+COPY requirements-precios.txt ./
+RUN pip install -r requirements-precios.txt
 
 FROM python:${PYTHON_VERSION}-slim
-# libgomp1: requerido en runtime por xgboost/scikit-learn (OpenMP) en imagenes slim.
+# libgomp1: requerido en runtime por xgboost (OpenMP) en imagenes slim.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libgomp1 \
     && apt-get clean \
@@ -27,9 +26,7 @@ COPY --chown=app:app load ./load
 COPY --chown=app:app migrations ./migrations
 COPY --chown=app:app models ./models
 COPY --chown=app:app utils ./utils
-COPY --chown=app:app validate ./validate
-COPY --chown=app:app run_pipeline.py run_prices.py ./
-# config.settings crea data/ y logs/ al importarse.
+COPY --chown=app:app run_prices.py ./
 RUN mkdir -p data logs && chown app:app data logs
 USER app
-CMD ["python", "run_pipeline.py", "--mode", "all", "--once"]
+CMD ["python", "run_prices.py", "--mode", "hourly"]

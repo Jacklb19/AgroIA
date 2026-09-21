@@ -199,6 +199,44 @@ def save_quality_report(report: dict, base_dir: Path) -> Path:
     return out
 
 
+def sincronizar_reportes(engine, base_dir: Path) -> int:
+    """
+    Sube a la tabla extraction_report los reportes JSON de data/quality_reports/, así /api/calidad
+    funciona también donde no hay disco compartido (Vercel). Devuelve cuántos reportes se sincronizaron.
+    """
+    from sqlalchemy import text
+
+    if not base_dir.is_dir():
+        return 0
+    n = 0
+    for ruta in sorted(base_dir.glob("*.json")):
+        try:
+            r = json.loads(ruta.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(r, dict) or "fuente" not in r or "completitud_pct" not in r:
+            continue     # otros JSON de la carpeta (p. ej. resultados del ANOVA)
+        with engine.begin() as conn:
+            conn.execute(
+                text("""
+                    INSERT INTO extraction_report (fuente, uri, filas, columnas, duplicados, completitud_pct, extraido_at, sincronizado_at)
+                    VALUES (:fuente, :uri, :filas, :columnas, :dup, CAST(:comp AS jsonb), CAST(:ext AS timestamptz), NOW())
+                    ON CONFLICT (fuente) DO UPDATE SET
+                        uri = EXCLUDED.uri, filas = EXCLUDED.filas, columnas = EXCLUDED.columnas,
+                        duplicados = EXCLUDED.duplicados, completitud_pct = EXCLUDED.completitud_pct,
+                        extraido_at = EXCLUDED.extraido_at, sincronizado_at = NOW()
+                """),
+                {
+                    "fuente": str(r["fuente"])[:100], "uri": r.get("uri"), "filas": r.get("filas"),
+                    "columnas": r.get("columnas"), "dup": r.get("duplicados_por_clave"),
+                    "comp": json.dumps(r["completitud_pct"]), "ext": r.get("extraido_at"),
+                },
+            )
+        n += 1
+    logger.info("Reportes de extracción sincronizados con la BD: %s", n)
+    return n
+
+
 # ── Pipeline estándar para un extractor ─────────────────────────────────
 def standardize(
     df: pd.DataFrame,

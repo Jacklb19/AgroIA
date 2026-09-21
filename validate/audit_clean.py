@@ -16,16 +16,14 @@ Uso:
 import argparse
 import logging
 import sys
-import textwrap
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 # ── Configuración del proyecto ──────────────────────────────────────
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from config.settings import DATA_RAW, DATA_PROCESSED, BASE_DIR
+from config.settings import DATA_RAW, DATA_PROCESSED
 
 logger = logging.getLogger("audit_clean")
 
@@ -183,7 +181,7 @@ def audit_clean_clima():
 
     # --- Estaciones ---
     n_estaciones = df["id_estacion"].nunique()
-    report.add(modulo, f"Diversidad de estaciones (>= 5)", n_estaciones >= 5,
+    report.add(modulo, "Diversidad de estaciones (>= 5)", n_estaciones >= 5,
                f"{n_estaciones} estaciones únicas")
 
 
@@ -232,7 +230,7 @@ def audit_clean_insumos():
         categorias = df["tipo_insumo"].unique().tolist()
         esperadas = {"Fertilizante", "Plaguicida", "Otros"}
         ok = set(categorias).issubset(esperadas)
-        report.add(modulo, f"Categorías tipo_insumo válidas", ok,
+        report.add(modulo, "Categorías tipo_insumo válidas", ok,
                    f"Encontradas: {categorias}, Esperadas: {esperadas}",
                    "INFO" if ok else "WARNING")
 
@@ -290,9 +288,9 @@ def audit_clean_municipios():
     # --- Cargar mapas ---
     divipola_map = load_divipola_map()
     synonym_map = build_synonym_map()
-    report.add(modulo, f"Mapa DIVIPOLA cargado (>= 100 municipios)",
+    report.add(modulo, "Mapa DIVIPOLA cargado (>= 100 municipios)",
                len(divipola_map) >= 100, f"{len(divipola_map)} entradas")
-    report.add(modulo, f"Mapa sinónimos cargado", True, f"{len(synonym_map)} entradas")
+    report.add(modulo, "Mapa sinónimos cargado", True, f"{len(synonym_map)} entradas")
 
     # --- Resolución de municipios conocidos ---
     test_municipios = ["Bogotá D.C.", "Medellín", "Cali", "Barranquilla"]
@@ -315,7 +313,7 @@ def audit_clean_municipios():
     })
     df_result = agregar_id_municipio(df_test, "municipio")
     resueltos = df_result["id_municipio"].notna().sum()
-    report.add(modulo, f"agregar_id_municipio: >= 3/4 resueltos", resueltos >= 3,
+    report.add(modulo, "agregar_id_municipio: >= 3/4 resueltos", resueltos >= 3,
                f"{resueltos}/4 resueltos")
 
     # --- Regiones naturales ---
@@ -400,7 +398,7 @@ def audit_clean_precios():
     if "id_municipio" in df_clean.columns:
         resueltos = df_clean["id_municipio"].notna().sum()
         pct = resueltos / len(df_clean) * 100
-        report.add(modulo, f"Municipios resueltos (>= 50%)", pct >= 50,
+        report.add(modulo, "Municipios resueltos (>= 50%)", pct >= 50,
                    f"{pct:.1f}% resueltos ({resueltos}/{len(df_clean)})")
 
     # --- Dimensión centrales ---
@@ -437,7 +435,7 @@ def audit_clean_suelo():
         return
 
     # --- Verificar columnas esperadas de la función _pick_col ---
-    from clean.clean_suelo import _pick_col, _CATEGORY_COLS, _SOIL_COLS, _TEXTURE_COLS
+    from clean.clean_suelo import _pick_col, _CATEGORY_COLS
 
     col_code = _pick_col(df_sipra, ["codmunicipio", "cod_municipio", "id_municipio", "divipola"])
     report.add(modulo, "Columna código municipio encontrada", col_code is not None,
@@ -540,7 +538,7 @@ def run_full_audit(verbose: bool = False):
         try:
             fn()
         except Exception as e:
-            report.add(name, f"Ejecución sin errores fatales", False,
+            report.add(name, "Ejecución sin errores fatales", False,
                        f"Error: {type(e).__name__}: {e}", "ERROR")
             logger.exception(f"Error ejecutando auditoría {name}")
 

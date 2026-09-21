@@ -4,16 +4,13 @@ Uso: python run_pipeline.py --mode all --once
 """
 import argparse
 import logging
-import sys
 import pandas as pd
 import numpy as np
-from datetime import datetime
 from config.settings import LOGS_DIR
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
-from rich.progress import Progress, SpinnerColumn, TextColumn
-from rich import print as rprint
+from rich.progress import Progress, TextColumn
 
 # Configuración de consola profesional
 console = Console(safe_box=True, legacy_windows=False)
@@ -54,6 +51,8 @@ def run_core_etl(engine=None):
             build_region_map_from_divipola,
         )
         from clean.clean_clima           import unificar_clima_mensual
+        from clean.clean_produccion      import normalizar_produccion
+        from load.load_facts             import _normalizar_nombre
         from load.db                     import get_engine, init_schema
         from load.load_dimensions        import (
             load_dim_region_natural, load_dim_tiempo,
@@ -75,19 +74,8 @@ def run_core_etl(engine=None):
         df_divipola    = extract_divipola()
         df_produccion  = extract_produccion()
         
-        # Normalización interna de producción
-        rename_map = {
-            "a_o": "anio", "rea_sembrada": "area_sembrada_ha",
-            "rea_cosechada": "area_cosechada_ha", "producci_n": "produccion_total_ton",
-            "rendimiento": "rendimiento_t_ha", "grupo_cultivo": "grupo_de_cultivo",
-            "ciclo_del_cultivo": "ciclo_de_cultivo", "c_digo_dane_municipio": "id_municipio"
-        }
-        df_produccion = df_produccion.rename(columns=rename_map)
-        num_cols = ["anio", "area_sembrada_ha", "area_cosechada_ha", "produccion_total_ton", "rendimiento_t_ha"]
-        for col in num_cols:
-            if col in df_produccion.columns:
-                df_produccion[col] = pd.to_numeric(df_produccion[col], errors="coerce")
-        df_produccion[num_cols[1:]] = df_produccion[num_cols[1:]].fillna(0)
+        # Nombres del esquema (acepta las columnas crudas de Socrata y las ya renombradas por el extractor)
+        df_produccion = normalizar_produccion(df_produccion)
 
         progress.update(task, description="[cyan]Obteniendo catálogo IDEAM...")
         from extract.extract_ideam_estaciones import extract_estaciones
@@ -108,7 +96,9 @@ def run_core_etl(engine=None):
         df_cultivos = df_cultivos.rename(columns={
             "cultivo": "nombre_cultivo", "grupo_de_cultivo": "familia_botanica", "ciclo_de_cultivo": "tipo_ciclo"
         })
-        df_cultivos["nombre_normalizado"] = df_cultivos["nombre_cultivo"].astype(str).str.upper().str.strip()
+        # Misma normalización (sin tildes) que usa load_all_facts para unir producción con dim_cultivo:
+        # con solo upper() los cultivos con tilde (Café, Plátano, Maíz, Caña...) no coincidían y se perdían.
+        df_cultivos["nombre_normalizado"] = df_cultivos["nombre_cultivo"].astype(str).map(_normalizar_nombre)
         df_cultivos["tipo_ciclo"] = df_cultivos["tipo_ciclo"].astype(str).str.lower()
         df_cultivos.loc[~df_cultivos["tipo_ciclo"].isin(['transitorio','permanente']), "tipo_ciclo"] = None
         df_cultivos = df_cultivos.replace({np.nan: None, "nan": None, "None": None})
@@ -201,6 +191,10 @@ def run_extended_etl(engine=None):
         df_boletines = extract_noaa_enso()
         if not df_boletines.empty:
             load_fact_alerta_enso(engine, df_boletines)
+            # Índices derivados de datos reales: años Niño desde el ONI y SPI/anomalía desde el clima
+            from load.derive_clima_indices import actualizar_es_anio_nino, actualizar_indices_precipitacion
+            actualizar_es_anio_nino(engine)
+            actualizar_indices_precipitacion(engine)
 
         # Insumos (Usando el extractor robusto con datos sintéticos)
         progress.update(task, description="[magenta]Actualizando Precios de Insumos (IPIA)...")
@@ -277,27 +271,55 @@ def run_models(engine=None):
         progress.update(task, description="[bold green]MODELOS IA Completados.")
 
 
+def run_precios(engine=None):
+    """Precios diarios (SIPSA): delega en run_prices, que ya registra cada paso en ingest_run."""
+    from load.db import get_engine
+    from run_prices import run_hourly
+
+    console.rule("[bold cyan]PRECIOS DIARIOS (SIPSA)")
+    resultado = run_hourly(engine or get_engine())
+    console.print(resultado)
+    return resultado
+
+
+# Etapa → función. Cada una queda en ingest_run como `pipeline_<etapa>` (estado, filas, error).
+ETAPAS = {"core": run_core_etl, "extended": run_extended_etl, "models": run_models}
+
+
 def run_etl(mode: str = "all"):
     print_banner()
     from load.db import get_engine
+    from load.ingest_log import avisar_frescura, registrar_etapa
+
     engine = get_engine()
-    
-    if mode in {"core", "all"}:
-        run_core_etl(engine=engine)
-    
-    if mode in {"extended", "all"}:
-        run_extended_etl(engine=engine)
-        
-    if mode in {"models", "all"}:
-        run_models(engine=engine)
-    
+
+    if mode == "precios":
+        run_precios(engine)
+    elif mode != "salud":
+        etapas = list(ETAPAS) if mode == "all" else [mode]
+        for nombre in etapas:
+            with registrar_etapa(engine, f"pipeline_{nombre}"):
+                ETAPAS[nombre](engine=engine)
+        try:   # los reportes de extracción (JSON en disco) se publican en la BD para que la web los lea
+            from config.settings import DATA_RAW
+            from utils.extraction_quality import sincronizar_reportes
+
+            sincronizar_reportes(engine, DATA_RAW.parent / "quality_reports")
+        except Exception:
+            logger.exception("No se pudieron sincronizar los reportes de extracción")
+
+    avisar_frescura(engine)   # avisa por webhook si los precios o el pipeline llevan demasiado sin actualizarse
+
     console.print("\n[bold green][OK] Pipeline finalizado con exito.[/bold green]")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Orquestador AgroIA ETL")
     parser.add_argument("--once", action="store_true", help="Ejecuta una vez y sale")
-    parser.add_argument("--mode", choices=["core", "extended", "models", "all"], default="all", help="Modo de ejecución")
+    parser.add_argument(
+        "--mode", choices=["core", "extended", "models", "all", "precios", "salud"], default="all",
+        help="core/extended/models/all = ETL semanal · precios = ingesta diaria SIPSA · salud = solo revisa la frescura y avisa",
+    )
     args = parser.parse_args()
 
     if args.once:

@@ -1,6 +1,5 @@
 import pandas as pd
 import logging
-from pathlib import Path
 from config.settings import DATA_RAW, DATA_PROCESSED
 
 logger = logging.getLogger(__name__)

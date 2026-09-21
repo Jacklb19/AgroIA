@@ -1,36 +1,48 @@
-import os
 import logging
-from sqlalchemy import create_engine, text
-from dotenv import load_dotenv
+import os
 
-load_dotenv()
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine import URL
+
+from config.settings import db_config  # carga .env y valida las variables
+
 logger = logging.getLogger(__name__)
 
-import urllib.parse
 
 def get_engine():
-    password = os.getenv('SUPABASE_DB_PASSWORD') or os.getenv('SUPABASE_DB_PASS', '')
-    encoded_password = urllib.parse.quote_plus(password)
-    host = os.getenv('SUPABASE_DB_HOST', 'localhost')
-    url = (
-        f"postgresql+psycopg2://{os.getenv('SUPABASE_DB_USER')}:"
-        f"{encoded_password}@"
-        f"{host}:"
-        f"{os.getenv('SUPABASE_DB_PORT', 5432)}/"
-        f"{os.getenv('SUPABASE_DB_NAME', 'postgres')}"
+    """Engine de SQLAlchemy con la configuración validada de config.settings.db_config()."""
+    cfg = db_config()
+    url = URL.create(
+        "postgresql+psycopg2",
+        username=cfg["user"], password=cfg["password"],   # URL.create escapa los caracteres especiales
+        host=cfg["host"], port=cfg["port"], database=cfg["dbname"],
     )
-    ssl_mode = "disable" if host in ["localhost", "127.0.0.1"] else "require"
-    return create_engine(url, connect_args={"sslmode": ssl_mode}, pool_pre_ping=True)
+    connect_args = {"sslmode": cfg["sslmode"], "connect_timeout": 15}
+    if os.getenv("DB_SSL_CA"):
+        connect_args["sslrootcert"] = os.environ["DB_SSL_CA"]
+    return create_engine(url, connect_args=connect_args, pool_pre_ping=True)
 
 
 def init_schema(engine):
-    """Ejecuta schema.sql para crear todas las tablas si no existen."""
-    schema_path = os.path.join(os.path.dirname(__file__), "schema.sql")
-    with open(schema_path, "r", encoding="utf-8") as f:
-        sql = f.read()
-    with engine.begin() as conn:
-        conn.execute(text(sql))
-    logger.info("Schema inicializado correctamente")
+    """Aplica las migraciones pendientes (migrations/). Idempotente: si la base está al día no hace nada."""
+    from load.migrate import aplicar
+
+    hechas = aplicar(engine)
+    if hechas:
+        logger.info("Migraciones aplicadas: %s", ", ".join(hechas))
+
+
+def init_schema_precios(engine, force: bool = False):
+    """
+    Antes creaba aparte las tablas de precios para que el job horario no recreara las vistas de Power BI.
+    Con migraciones versionadas eso ya no es un problema (las vistas solo se reaplican si cambia su archivo),
+    así que es un alias de init_schema. force=True reaplica también las migraciones repetibles (vistas, seguridad).
+    """
+    from load.migrate import aplicar
+
+    hechas = aplicar(engine, forzar_repetibles=force)
+    if hechas:
+        logger.info("Migraciones aplicadas: %s", ", ".join(hechas))
 
 
 def upsert(engine, table: str, df, conflict_cols: list):

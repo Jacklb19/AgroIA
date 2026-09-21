@@ -7,7 +7,6 @@ desviación interanual, anomalía vs. promedio del cultivo). Marca la columna
 """
 import logging
 
-import numpy as np
 import pandas as pd
 
 from load.db import get_engine

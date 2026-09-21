@@ -1,53 +1,61 @@
-import fs from "fs/promises";
-import path from "path";
+import pool from "@/lib/db";
+import { CACHE_5MIN, errorBD } from "@/lib/api";
 
-/* Lee los reportes JSON emitidos por utils/extraction_quality.standardize
-   y los retorna agregados. Permite al frontend mostrar la calidad real
-   de cada fuente sin tener que correr Python. */
+export const dynamic = "force-dynamic";
 
+/* Calidad de los datos, leída de la BD (el pipeline la publica en extraction_report y quality_check_run;
+   antes se leían archivos del disco y no funcionaba en Vercel). */
 export async function GET() {
   try {
-    const dir = path.resolve(process.cwd(), "..", "data", "quality_reports");
-    let files;
-    try {
-      files = await fs.readdir(dir);
-    } catch {
-      return Response.json({ reportes: [], mensaje: "Aún no hay reportes de calidad. Corre el pipeline de extracción." });
-    }
-    const jsons = files.filter((f) => f.endsWith(".json"));
-    const reportes = await Promise.all(
-      jsons.map(async (f) => {
-        try {
-          const txt = await fs.readFile(path.join(dir, f), "utf8");
-          return JSON.parse(txt);
-        } catch {
-          return null;
-        }
-      }),
-    );
-    const valid = reportes.filter(Boolean);
-    return Response.json({
-      reportes: valid.map((r) => {
-        const comp = r.completitud_pct || {};
-        const valores = Object.values(comp);
-        const media = valores.length
-          ? valores.reduce((s, v) => s + Number(v), 0) / valores.length
-          : 0;
-        return {
-          fuente:           r.fuente,
-          uri:              r.uri,
-          filas:            r.filas,
-          columnas:         r.columnas,
-          completitud_media: +media.toFixed(1),
-          duplicados:       r.duplicados_por_clave,
-          extraido_at:      r.extraido_at,
-          columnas_bajas:   Object.entries(comp)
-            .filter(([_, v]) => Number(v) < 80)
-            .map(([col, v]) => ({ col, completitud: Number(v) })),
-        };
-      }),
+    const [rep, ind] = await Promise.all([
+      pool.query(
+        `SELECT fuente, uri, filas, columnas, duplicados, completitud_pct, extraido_at
+         FROM extraction_report ORDER BY fuente`,
+      ),
+      pool.query(
+        `SELECT DISTINCT ON (indicador) indicador, descripcion, valor, estado, ejecutado_at
+         FROM quality_check_run ORDER BY indicador, ejecutado_at DESC`,
+      ),
+    ]);
+
+    const reportes = rep.rows.map((r) => {
+      const comp = r.completitud_pct || {};
+      const valores = Object.values(comp).map(Number);
+      const media = valores.length ? valores.reduce((s, v) => s + v, 0) / valores.length : 0;
+      return {
+        fuente: r.fuente,
+        uri: r.uri,
+        filas: r.filas,
+        columnas: r.columnas,
+        completitud_media: +media.toFixed(1),
+        duplicados: r.duplicados,
+        extraido_at: r.extraido_at,
+        columnas_bajas: Object.entries(comp)
+          .filter(([, v]) => Number(v) < 80)
+          .map(([col, v]) => ({ col, completitud: Number(v) })),
+      };
     });
+
+    const indicadores = ind.rows.map((r) => ({
+      indicador: r.indicador,
+      descripcion: r.descripcion,
+      valor: r.valor,
+      estado: r.estado,
+      ejecutado_at: r.ejecutado_at,
+    }));
+
+    return Response.json(
+      {
+        fromDB: true,
+        reportes,
+        indicadores,
+        ...(reportes.length || indicadores.length
+          ? {}
+          : { mensaje: "Aún no hay reportes de calidad. Corre el pipeline (python run_pipeline.py --mode core --once)." }),
+      },
+      { headers: CACHE_5MIN },
+    );
   } catch (err) {
-    return Response.json({ error: err.message }, { status: 500 });
+    return errorBD("calidad", err);
   }
 }

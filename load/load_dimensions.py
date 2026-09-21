@@ -84,7 +84,6 @@ def load_dim_estacion_ideam(engine, df_estaciones: pd.DataFrame):
     upsert(engine, "dim_estacion_ideam", df_estaciones, ["id_estacion"])
 
 def load_dim_central_abastos(engine, df_centrales: pd.DataFrame):
-    import numpy as np
     df = df_centrales.copy()
     # id_municipio NaN viola la FK — convertir a None para que Postgres acepte NULL
     if "id_municipio" in df.columns:

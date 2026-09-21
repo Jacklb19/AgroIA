@@ -1,0 +1,22 @@
+# Postgres 16 local para desarrollo y pruebas. Uso: scripts/tasks.ps1 setup  (o `docker compose up -d db`)
+# El puerto del host se cambia con AGROIA_DB_PORT (por defecto 5432).
+services:
+  db:
+    image: postgres:16
+    container_name: agroia-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: agroia
+    ports:
+      - "${AGROIA_DB_PORT:-5432}:5432"
+    volumes:
+      - agroia-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d agroia"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  agroia-pgdata:

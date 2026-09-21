@@ -9,7 +9,6 @@ Es un modelo de series temporales con estacionalidad multiplicativa, alineado
 con el nivel avanzado (analítica predictiva avanzada sobre datos abiertos).
 """
 import logging
-from datetime import datetime, timedelta
 
 import numpy as np
 import pandas as pd

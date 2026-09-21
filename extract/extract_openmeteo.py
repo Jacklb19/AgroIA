@@ -17,7 +17,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 import requests
 
-from config.settings import CLIMA_YEAR_START, DATA_RAW, YEAR_END
+from config.settings import CLIMA_YEAR_START, DATA_RAW
 
 logger = logging.getLogger(__name__)
 

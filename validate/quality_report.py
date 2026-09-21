@@ -11,7 +11,7 @@ CHECKS = [
         "sql": """
             SELECT
                 COUNT(DISTINCT m.id_municipio) FILTER (WHERE e.id_municipio IS NOT NULL)::FLOAT
-                / COUNT(DISTINCT m.id_municipio) * 100 AS pct
+                / NULLIF(COUNT(DISTINCT m.id_municipio), 0) * 100 AS pct
             FROM dim_municipio m
             LEFT JOIN dim_estacion_ideam e ON e.id_municipio = m.id_municipio
         """,
@@ -138,5 +138,39 @@ def run_quality_report(engine) -> pd.DataFrame:
                     val_str = f"{valor:.2f}" if valor is not None else "N/A"
                     logger.info(f"CALIDAD OK — {check['mensaje']}: {val_str}")
             except Exception as e:
+                # Sin rollback, un check que falla deja abortada la transacción y rompe todos los siguientes.
+                conn.rollback()
                 logger.error(f"Error en check {check['nombre']}: {e}")
-    return pd.DataFrame(resultados)
+                resultados.append({
+                    "indicador": check["nombre"], "descripcion": check["mensaje"],
+                    "valor": None, "estado": "SIN_DATOS",
+                })
+    df = pd.DataFrame(resultados)
+    _guardar_resultados(engine, df)
+    return df
+
+
+def _guardar_resultados(engine, df: pd.DataFrame) -> None:
+    """Guarda cada corrida en quality_check_run (para /api/calidad y /api/estado) y avisa si hay alertas."""
+    if df.empty:
+        return
+    try:
+        filas = [
+            {"i": r["indicador"], "d": r["descripcion"], "v": None if pd.isna(r["valor"]) else float(r["valor"]), "e": r["estado"]}
+            for r in df.to_dict("records")
+        ]
+        with engine.begin() as conn:
+            conn.execute(
+                text("INSERT INTO quality_check_run (indicador, descripcion, valor, estado) VALUES (:i, :d, :v, :e)"),
+                filas,
+            )
+            conn.execute(text("DELETE FROM quality_check_run WHERE ejecutado_at < NOW() - INTERVAL '90 days'"))
+    except Exception as exc:  # p. ej. migración 004 sin aplicar: el reporte sigue siendo válido
+        logger.warning("No se pudo guardar el reporte de calidad en la BD: %s", exc)
+
+    en_alerta = df[df["estado"] == "ALERTA"]
+    if not en_alerta.empty:
+        from utils.alertas import enviar_alerta
+
+        detalle = "\n".join(f"· {r['descripcion']}: {r['valor']:.2f}" for r in en_alerta.to_dict("records"))
+        enviar_alerta(f"Calidad de datos: {len(en_alerta)} indicador(es) en alerta", detalle, nivel="aviso")

@@ -10,3 +10,7 @@ out/
 # OS
 .DS_Store
 Thumbs.db
+
+# tests E2E
+playwright-report/
+test-results/

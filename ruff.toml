@@ -1,0 +1,13 @@
+target-version = "py313"
+line-length = 140
+extend-exclude = ["venv", "web", "data", "logs", ".claude"]
+
+[lint]
+# Errores de sintaxis, imports/variables sin usar y nombres indefinidos (F), más bugs frecuentes.
+select = ["E4", "E7", "E9", "F", "B006", "B011", "B018", "PLE"]
+# Estilo, no errores: se toleran las líneas compactas del código existente (if x: y, lambdas asignadas, nombres l/O).
+ignore = ["E701", "E702", "E731", "E741"]
+
+[lint.per-file-ignores]
+# Estos scripts se pueden ejecutar directamente: ajustan sys.path antes de importar el proyecto.
+"validate/anova_tests.py" = ["E402"]

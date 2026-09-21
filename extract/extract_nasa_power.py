@@ -12,7 +12,6 @@ en zonas con baja densidad de estaciones).
 """
 import logging
 from datetime import datetime
-from pathlib import Path
 
 import pandas as pd
 
