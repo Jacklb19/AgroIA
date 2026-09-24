@@ -338,11 +338,10 @@ export default function PagePrecios({ ruta }) {
   );
   const ultimoCambio = useRef(null);   // datos_actualizados_at visto por última vez
 
-  /* Estado de los datos: cada 5 min y al volver a la pestaña. Recarga la tabla solo si hubo datos nuevos. */
+  /* Estado de los datos: al montar, cada 5 min y al volver a la pestaña. Recarga la tabla solo si hubo datos nuevos. */
   useEffect(() => {
     let vivo = true;
     const consultar = async () => {
-      if (document.visibilityState !== "visible") return;
       try {
         const r = await fetch("/api/precios/estado", { cache: "no-store" });
         const d = await r.json();
@@ -355,10 +354,15 @@ export default function PagePrecios({ ruta }) {
         if (vivo) setEstado((previo) => previo ?? { error: true });
       }
     };
+    // Se salta el chequeo de visibilidad solo en el refresco periódico/por evento (para no gastar
+    // llamadas con la pestaña en segundo plano) — nunca en el fetch inicial: si se hiciera, una
+    // pestaña que arranca oculta (prerender, apertura en segundo plano) dejaba el badge en
+    // "Verificando datos…" para siempre hasta el próximo intervalo de 5 min o cambio de pestaña.
     consultar();
-    const id = setInterval(consultar, REFRESCO_ESTADO_MS);
-    document.addEventListener("visibilitychange", consultar);
-    return () => { vivo = false; clearInterval(id); document.removeEventListener("visibilitychange", consultar); };
+    const consultarSiVisible = () => { if (document.visibilityState === "visible") consultar(); };
+    const id = setInterval(consultarSiVisible, REFRESCO_ESTADO_MS);
+    document.addEventListener("visibilitychange", consultarSiVisible);
+    return () => { vivo = false; clearInterval(id); document.removeEventListener("visibilitychange", consultarSiVisible); };
   }, []);
 
   useEffect(() => {
