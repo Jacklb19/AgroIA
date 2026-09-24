@@ -1,12 +1,12 @@
 # Servicio horario de precios (run_prices.py): sin geopandas, optuna, shap ni statsmodels.
 # Versiones fijadas (probadas con Python 3.13). Para actualizar: cambia aqui, corre `scripts/tasks.ps1 test` y sube el cambio;
 # Dependabot propone las actualizaciones semanalmente.
-numpy==2.4.4
-pandas==3.0.2
-requests==2.33.1
+numpy==2.5.3
+pandas==3.0.6
+requests==2.34.2
 openpyxl==3.1.5
-SQLAlchemy==2.0.49
-psycopg2-binary==2.9.12
-python-dotenv==1.2.2
-scikit-learn==1.8.0
-xgboost==3.2.0
+SQLAlchemy==2.0.54
+psycopg2-binary==2.9.13
+python-dotenv==1.2.3
+scikit-learn==1.9.1
+xgboost==3.4.1
