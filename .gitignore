@@ -200,6 +200,7 @@ web/out/
 .env
 .env.local
 !.env.example
+ENV_BACKUP.md
 AgroIA_Informe_Diseno_Web.docx
 .claude
 venv

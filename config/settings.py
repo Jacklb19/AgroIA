@@ -115,8 +115,11 @@ YEAR_END   = _env_int("PIPELINE_YEAR_END", datetime.now().year)
 # (Slack, Discord y Teams aceptan un POST JSON; ver utils/alertas.py).
 ALERT_WEBHOOK_URL = _env("ALERT_WEBHOOK_URL")
 
-# Período histórico clima (más corto para descargas rápidas, ampliar después)
-CLIMA_YEAR_START = 2018
+# Período histórico clima (más corto para descargas rápidas, ampliar después).
+# Configurable por entorno (CLIMA_YEAR_START) para poder acotar una corrida puntual
+# (p. ej. rellenar solo los últimos años) sin perder la posibilidad de correr el
+# histórico completo más adelante quitando la variable.
+CLIMA_YEAR_START = _env_int("CLIMA_YEAR_START", 2018)
 
 # Regiones naturales (orden fijo = id_region)
 REGIONES_NATURALES = ["Andina", "Caribe", "Pacífico", "Orinoquía", "Amazonía"]

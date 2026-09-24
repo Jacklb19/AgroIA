@@ -1,6 +1,6 @@
 import pool from "@/lib/db";
+import { errorBD } from "@/lib/api";
 import { NOTA_REGLAS, ajusteEscenario } from "@/lib/reglas";
-import { log } from "@/lib/log";
 
 export const dynamic = "force-dynamic";
 
@@ -48,7 +48,13 @@ function dosisFertilizante(aptitud, prob_deficit) {
 }
 
 export async function POST(request) {
-  const { muni, cultivo, enso = "Neutral", lluvia = "Normal" } = await request.json();
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json({ error: "El cuerpo debe ser JSON válido." }, { status: 400 });
+  }
+  const { muni, cultivo, enso = "Neutral", lluvia = "Normal" } = body ?? {};
   const nombreMuni = (muni || "").split(",")[0].trim();
 
   let aptitud = null, prob_deficit = null, alertasAlto = 0, rendimientoBase = null;
@@ -89,7 +95,9 @@ export async function POST(request) {
     alertasAlto     = alertas.rows[0]?.n || 0;
     rendimientoBase = rend.rows[0]?.yhat != null ? parseFloat(rend.rows[0].yhat) : null;
   } catch (err) {
-    log("error", "recomendacion", { mensaje: err.message, codigo: err.code });
+    // Un fallo real de BD no es lo mismo que "sin alertas": se responde 503 en vez de
+    // simular una recomendación con ceros/null (nunca se inventan datos).
+    return errorBD("recomendacion", err, request);
   }
 
   const ventana = ventanaPorCultivo(cultivo, enso);

@@ -5,8 +5,8 @@ al terminar un trabajo relevante, actualiza las secciones 2, 6 y 7. No lo llenes
 
 - **Repo**: `hackaton4\AgroH` (git, remoto `Jacklb19/AgroIA`). **Trabaja solo dentro de `AgroH`**, salvo que el usuario diga otra cosa.
 - **Idioma**: responde en español. Sin emojis salvo que el usuario los use.
-- **Nunca** toques la base real (Supabase) ni el Postgres del usuario (puerto 5433) sin permiso explícito. Ver sección 4.
-- Estado: las 4 olas del plan de robustez están **hechas en local y SIN commit** (≈90 archivos). No hagas commit/push sin que el usuario lo pida.
+- La base de datos real vive en **Railway Postgres** (proyecto `agroia-colombia`), no Supabase — ver sección 5. Nunca la toques (migraciones, reseed, etc.) sin permiso explícito.
+- Estado: las 4 olas del plan de robustez + Ola 5 (BD real poblada) están commiteadas en `mejoras-robustez` (pusheada a origin). No hagas commit/push sin que el usuario lo pida.
 
 ## 1. Qué es el proyecto
 
@@ -37,8 +37,9 @@ Principios que no se negocian:
 - **Ola 4 — UX e información**: hash routing (`web/lib/useHashRoute.js`, filtros en la URL), página **Datos y transparencia** (`PageDatos.jsx`),
   glosario `<Term>`, `<InfoPanel>`, CSV (`web/lib/csv.js`, `?formato=csv`), widget "Precios de hoy", móvil (tarjetas), axe, `next/font`,
   favicon/OG, `docs/ARQUITECTURA.md`, `docs/RUNBOOK.md`, `docs/DICCIONARIO_DATOS.md` (generado).
-- Resultados medidos: modelo con datos EVA reales y **sin clima** (2025 de prueba): MAE 2,26 vs línea base 2,34 t/ha (mejora ≈3 %), cobertura p10–p90 ≈83 %.
+- Resultados medidos (seed local, sin clima): modelo con datos EVA reales y sin clima (2025 de prueba): MAE 2,26 vs línea base 2,34 t/ha (mejora ≈3 %), cobertura p10–p90 ≈83 %.
   Lighthouse local móvil 94/98/100/100. 167 tests Python, 33 E2E, cobertura ≈50 %.
+- **Ola 5 — base de datos real (Railway Postgres, 2026-09-23/24)**: proyecto `agroia-colombia` en Railway (no Supabase, ver sección 5); esquema aplicado con `load/migrate.py`; RLS + `agroia_web` verificados con pruebas reales de escritura; datos reales cargados de punta a punta (producción EVA 109,876 filas, precios diarios SIPSA 696,084 filas, clima IDEAM 2023-2026, ENSO, insumos, censo, modelos entrenados — detalle completo en `docs/ESTADO_BD_INICIAL.md`). Se corrigieron dos bugs reales encontrados al probar contra Postgres real por primera vez: `fact_precios_insumos.unidad_medida` demasiado corta (`migrations/005_ajustes_insumos.sql`) y `load/db.py::upsert()` mandaba filas una por una en vez de un INSERT multi-fila (110k filas pasaron de "horas/colgado" a 2 minutos con `psycopg2.extras.execute_values`); también se corrigió `/api/recomendacion` para no confundir un fallo de BD con "sin alertas".
 
 ## 3. Mapa del repo
 
@@ -71,20 +72,22 @@ run_prices.py      modos init|backfill|soap|hourly|informe|forecast
 
 ## 5. Datos y fuentes (lo que no sale del código)
 
-- Producción: EVA `uejq-wxrr` (datos.gov.co), **2019–2025**. Clima IDEAM: descarga real tarda horas; **nunca se midió el modelo con clima real**.
-- SIPSA: SOAP `appweb.dane.gov.co/sipsaWS` (historial ~300 MB) + Excel diario `anex-SIPSADiario-DDmmmAAAA.xlsx` (16 mercados; Barranquilla/Valledupar del Excel son promedios de ciudad y se excluyen).
+- Producción: EVA `uejq-wxrr` (datos.gov.co), **2007–2026** (109,876 filas reales cargadas). Clima IDEAM: descarga completa tarda horas; la carga real (2026-09-23) se acotó a **2023-2026** con `CLIMA_YEAR_START` (env var, default 2018 en código) — el histórico 2018-2022 queda pendiente de cargar cuando se quiera invertir el tiempo.
+- SIPSA: SOAP `appweb.dane.gov.co/sipsaWS` (historial ~300 MB, 696,084 filas reales 2020-02 a hoy) + Excel diario `anex-SIPSADiario-DDmmmAAAA.xlsx` (16 mercados; Barranquilla/Valledupar del Excel son promedios de ciudad y se excluyen).
 - UPRA/SIPRA cayó: `fact_aptitud_suelo` queda vacía. Sin reemplazo conocido.
+- **Base de datos real**: Railway Postgres, proyecto `agroia-colombia` (no Supabase — la cuenta de Supabase disponible tenía el límite de proyectos free agotado; ver `ENV_BACKUP.md` para el detalle y `docs/ESTADO_BD_INICIAL.md` para el estado completo de la carga). Conexión externa vía proxy TCP público de Railway; credenciales en `.env`/`web/.env.local` (gitignored).
 
 ## 6. Pendientes y decisiones abiertas (actualiza esta lista)
 
-1. **Nada está commiteado.** El usuario debe decidir: rama + PR (uno por ola o uno solo) y revisión en preview de Vercel.
+1. **Merge a `main`**: `mejoras-robustez` sigue sin PR/merge. El usuario debe decidir cuándo.
 2. **Next.js 14.2.35** (última 14.x) tiene avisos de `npm audit` (1 crítico, varios altos) que solo se corrigen en 15.5.24+/16. Decidir migración.
-3. **Sin verificar nunca**: imágenes Docker, `docker-compose`, el workflow de GitHub Actions, aplicar las migraciones sobre el Supabase real
-   (hacer copia antes; ver `docs/OPERACION.md`), cambiar Vercel a `DB_USER=agroia_web`.
+3. **Sin verificar nunca**: imágenes Docker, `docker-compose`, el workflow de GitHub Actions contra un entorno real (solo corre contra Postgres efímero del propio CI).
 4. Cobertura de pruebas ≈50 % (piso del CI 40 %); sin `ruff format` (reescribiría 64 archivos).
-5. Modelo: mejora modesta sobre la línea base; medirlo con clima IDEAM real cuando se cargue.
+5. **Clima IDEAM real solo 2023-2026** (no 2018-2022): completar corriendo `core` sin `CLIMA_YEAR_START` cuando se quiera invertir las horas que toma. Ver `docs/ESTADO_BD_INICIAL.md`.
 6. Falta el "registro de cambios" en la página Datos (se puso "límites conocidos").
-7. Definir `NEXT_PUBLIC_SITE_URL` en Vercel (imagen OG).
+7. `web/app/api/anova` y `web/app/api/anova/imagen` son código muerto (leen `../data/quality_reports/` fuera de `web/`, nunca los llama el frontend — que ya usa `web/public/anova_data.json` estático). Detectado 2026-09-23, dejado sin tocar a pedido del usuario; candidato a limpieza futura.
+8. **Railway solo tiene la base de datos**, no los crons de `run_pipeline.py`/`run_prices.py` — los datos no se refrescan solos todavía. Desplegarlos usando `Dockerfile`/`Dockerfile.precios` + `railway.json`/`railway.precios.json` ya existentes es el siguiente paso natural.
+9. `web/.env.local` tenía una `GROQ_API_KEY` sin usar en el código — no se migró al nuevo `.env.local`, ver `ENV_BACKUP.md`.
 
 ## 7. Cómo mantener este archivo
 
