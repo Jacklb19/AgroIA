@@ -392,24 +392,35 @@ export default function PagePrediccion({ ruta }) {
 
   const [catalogoError, setCatalogoError] = useState(false);
 
-  /* Listas reales de municipios y cultivos con producción. Si fallan, se avisa: no hay listas de respaldo. */
+  /* Listas reales de municipios y cultivos con producción. Si fallan, se avisa: no hay listas de respaldo.
+     Solo el ~8% de los pares municipio×cultivo tiene predicción real (el modelo predice donde hay
+     suficiente historial, no en toda combinación con producción) — el primero alfabético de cada lista
+     casi nunca la tiene. Si no vino un combo en el enlace, se pide uno que sí tenga predicción en vez
+     de adivinar con list[0]; el usuario sigue pudiendo elegir cualquier otro después. */
   useEffect(() => {
-    const cargar = (url, guardar, elegir, deseado) =>
-      fetch(url)
-        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-        .then((data) => {
-          const list = Array.isArray(data) ? data : [];
-          guardar(list);
-          if (list.length) elegir(list.includes(deseado) ? deseado : list[0]);   // el valor del enlace, si existe
-          return list.includes(deseado) ? deseado : list[0];
-        })
-        .catch(() => { setCatalogoError(true); return null; });
-    Promise.all([
-      cargar("/api/municipios", setMunicipios, setMuni, inicial.m),
-      cargar("/api/cultivos", setCultivos, setCultivo, inicial.c),
-    ]).then(([m, c]) => {
-      setListo(true);
-      if (inicial.run && m && c && inicial.m === m && inicial.c === c) consultar({ muni: m, cultivo: c, year: yearInicial, enso: ensoInicial, lluvia: lluviaInicial });
+    const sugeridoPromesa = (inicial.m || inicial.c)
+      ? Promise.resolve(null)
+      : fetch("/api/prediccion/default").then((r) => (r.ok ? r.json() : null)).catch(() => null);
+
+    sugeridoPromesa.then((sugerido) => {
+      const cargar = (url, guardar, elegir, deseado) =>
+        fetch(url)
+          .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+          .then((data) => {
+            const list = Array.isArray(data) ? data : [];
+            guardar(list);
+            const elegido = list.includes(deseado) ? deseado : list[0];
+            if (list.length) elegir(elegido);
+            return elegido;
+          })
+          .catch(() => { setCatalogoError(true); return null; });
+      Promise.all([
+        cargar("/api/municipios", setMunicipios, setMuni, inicial.m || sugerido?.muni),
+        cargar("/api/cultivos", setCultivos, setCultivo, inicial.c || sugerido?.cultivo),
+      ]).then(([m, c]) => {
+        setListo(true);
+        if (inicial.run && m && c && inicial.m === m && inicial.c === c) consultar({ muni: m, cultivo: c, year: yearInicial, enso: ensoInicial, lluvia: lluviaInicial });
+      });
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
